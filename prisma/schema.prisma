@@ -1,165 +1,220 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// Define the database connection (MySQL in this case)
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+  // relationMode = "prisma" // Consider uncommenting during development if you encounter foreign key constraint issues on migration
+}
 
+// Define the Prisma Client generator
 generator client {
   provider = "prisma-client-js"
 }
 
-datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
-}
-
 // --- Enums ---
 
-// Enum for user roles to clearly define capabilities
 enum Role {
   REGISTRY    // Super Admin
   COORDINATOR // Manages a specific Center
   LECTURER    // Submits claims within a Center
 }
 
-// Enum for Claim Status to track the lifecycle of a claim
 enum ClaimStatus {
   PENDING   // Submitted, awaiting review
   APPROVED  // Reviewed and approved by Coordinator
   REJECTED  // Reviewed and rejected by Coordinator
 }
 
+// Enum for different types of claims
+enum ClaimType {
+  TEACHING
+  TRANSPORTATION
+  THESIS_PROJECT // Combined Thesis/Project claim type
+}
+
+// Enum for transportation types
+enum TransportType {
+  PUBLIC
+  PRIVATE
+}
+
+// Enum for thesis/project claim subtypes
+enum ThesisType {
+  SUPERVISION
+  EXAMINATION
+}
+
+// Enum for different levels/ranks of thesis supervision
+enum SupervisionRank {
+  PHD
+  MPHIL
+  MA
+  MSC
+  BED
+  BSC
+  BA
+  ED
+  // Add other relevant ranks as needed
+}
+
+
 // --- Models ---
 
-// User model: Represents all individuals interacting with the system
 model User {
-  id        String   @id @default(cuid()) // Unique ID (e.g., cl...)
-  email     String   @unique // Login email, must be unique across all users
+  id        String   @id @default(cuid()) // Unique ID
+  email     String   @unique // Login email, must be unique
   name      String?          // User's full name (optional)
-  password  String           // Hashed password for security
-  role      Role             // Role assigned to the user (REGISTRY, COORDINATOR, LECTURER)
-  createdAt DateTime @default(now()) // When the user account was created
-  updatedAt DateTime @updatedAt // When the user account was last updated
+  password  String           // Hashed password
+  role      Role             // User's role in the system
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // --- Relationships ---
+  // Relation: If COORDINATOR, the Center they coordinate (one-to-one)
+  coordinatedCenter Center?     @relation("CenterCoordinator")
 
-  // If the user is a Coordinator (role == COORDINATOR), they manage one Center.
-  // The relation is named "CenterCoordinator".
-  // The '?' means a User doesn't *have* to be a coordinator of a center.
-  coordinatedCenter Center? @relation("CenterCoordinator")
+  // Relation: If LECTURER, the Center they belong to (many-to-one)
+  lecturerCenter    Center?     @relation("CenterLecturers", fields: [lecturerCenterId], references: [id], onDelete: SetNull) // If Center deleted, set lecturerCenterId to null
+  lecturerCenterId  String?     // Foreign key
 
-  // If the user is a Lecturer (role == LECTURER), they belong to one Center.
-  // The relation is named "CenterLecturers".
-  // The '?' indicates a lecturer might not be assigned to a center initially (though unlikely in practice).
-  lecturerCenter   Center?     @relation("CenterLecturers", fields: [lecturerCenterId], references: [id])
-  lecturerCenterId String?     // Foreign key linking to the Center's id. Nullable.
+  // Relation: If LECTURER, the Department they belong to (many-to-one)
+  department        Department? @relation("DepartmentLecturers", fields: [departmentId], references: [id], onDelete: SetNull) // If Department deleted, set departmentId to null
+  departmentId      String?     // Foreign key
 
-  // If the user is a Lecturer (role == LECTURER), they belong to one Department within their Center.
-  // The relation is named "DepartmentLecturers".
-  department   Department? @relation("DepartmentLecturers", fields: [departmentId], references: [id])
-  departmentId String?     // Foreign key linking to the Department's id. Nullable.
-
-  // If the user is a Lecturer (role == LECTURER), they can submit multiple Claims.
-  // The relation is named "LecturerClaims".
+  // Relation: Claims submitted by this user (one-to-many)
   submittedClaims Claim[] @relation("LecturerClaims")
 
-  // If the user is a Coordinator (role == COORDINATOR), they can process (approve/reject) multiple Claims.
-  // The relation is named "CoordinatorClaims".
+  // Relation: Claims processed by this user (one-to-many)
   processedClaims Claim[] @relation("CoordinatorClaims")
 
-  // --- Indexes ---
-  // Add indexes for faster lookups on foreign keys often used in queries
-  @@index([lecturerCenterId])
-  @@index([departmentId])
+  // Relation: Students supervised by this user (one-to-many)
+  supervisedStudents SupervisedStudent[] @relation("SupervisorStudents")
+
+  // --- Block-level Indexes ---
+  @@index([lecturerCenterId]) // Index for lecturer's center assignment
+  @@index([departmentId])     // Index for lecturer's department assignment
 }
 
-// Center model: Represents a physical or logical center managed by a Coordinator
 model Center {
-  id        String   @id @default(cuid()) // Unique ID for the center
-  name      String   @unique // Name of the center, must be unique
-  createdAt DateTime @default(now()) // When the center was created
-  updatedAt DateTime @updatedAt // When the center was last updated
+  id            String   @id @default(cuid()) // Unique ID
+  name          String   @unique // Center name must be unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  // --- Relationships ---
+  // Relation: The Coordinator managing this Center (one-to-one enforced by unique constraint)
+  coordinator   User   @relation("CenterCoordinator", fields: [coordinatorId], references: [id]) // Coordinator is required
+  coordinatorId String @unique // Foreign key, ensures one coordinator per center
 
-  // Each Center MUST have exactly one Coordinator (User).
-  // This uses the other side of the "CenterCoordinator" relation defined in User.
-  coordinator   User   @relation("CenterCoordinator", fields: [coordinatorId], references: [id])
-  // The coordinatorId field stores the ID of the User who is the coordinator.
-  // It's marked @unique to enforce the one-to-one relationship (one user per center as coordinator).
-  coordinatorId String @unique
+  // Relation: Lecturers belonging to this Center (one-to-many)
+  lecturers   User[]       @relation("CenterLecturers")
 
-  // Each Center can have many Lecturers (Users).
-  // This uses the other side of the "CenterLecturers" relation defined in User.
-  lecturers User[] @relation("CenterLecturers")
-
-  // Each Center can contain multiple Departments.
-  // This uses the "CenterDepartments" relation.
+  // Relation: Departments within this Center (one-to-many)
   departments Department[] @relation("CenterDepartments")
 
-  // Each Center is associated with multiple Claims (submitted by its lecturers).
-  // This uses the "CenterClaims" relation.
-  claims Claim[] @relation("CenterClaims")
+  // Relation: Claims associated with this Center (one-to-many)
+  claims      Claim[]      @relation("CenterClaims")
+
+  // --- Block-level Indexes ---
+  // coordinatorId is already unique, which implies an index
 }
 
-// Department model: Represents a department within a specific Center
 model Department {
-  id        String   @id @default(cuid()) // Unique ID for the department
-  name      String           // Name of the department (e.g., "Computer Science")
-  createdAt DateTime @default(now()) // When the department was created
-  updatedAt DateTime @updatedAt // When the department was last updated
+  id        String   @id @default(cuid()) // Unique ID
+  name      String           // Department name
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // --- Relationships ---
-
-  // Each Department MUST belong to exactly one Center.
-  // This uses the other side of the "CenterDepartments" relation defined in Center.
+  // Relation: The Center this Department belongs to (many-to-one)
   center   Center @relation("CenterDepartments", fields: [centerId], references: [id], onDelete: Cascade) // If Center deleted, delete Department
-  centerId String // Foreign key linking to the Center's id
+  centerId String // Foreign key
 
-  // Each Department can have many Lecturers (Users) assigned to it.
-  // This uses the other side of the "DepartmentLecturers" relation defined in User.
+  // Relation: Lecturers belonging to this Department (one-to-many)
   lecturers User[] @relation("DepartmentLecturers")
 
-  // --- Constraints & Indexes ---
-  // Ensure department names are unique *within* the same center.
+  // --- Block-level Indexes ---
+  @@index([centerId]) // Index for faster lookups by center
+
+  // Constraint: Department names must be unique within the same center
   @@unique([name, centerId])
-  // Index for faster lookups based on the center.
-  @@index([centerId])
 }
 
-// Claim model: Represents a claim submitted by a Lecturer
+// --- Updated Claim Model ---
 model Claim {
-  id          String      @id @default(cuid()) // Unique ID for the claim
-  title       String                         // A short title for the claim
-  description String?     @db.Text            // Optional longer description (using TEXT type in DB)
-  amount      Float                          // The monetary amount being claimed
-  status      ClaimStatus @default(PENDING)    // Default status is PENDING upon creation
-  submittedAt DateTime    @default(now())      // Timestamp when the claim was created/submitted
-  updatedAt   DateTime    @updatedAt           // Timestamp of the last update (e.g., status change)
-  processedAt DateTime?                        // Timestamp when a Coordinator approved/rejected it (optional)
+  id          String      @id @default(cuid()) // Unique ID
+
+  // --- Common Fields ---
+  claimType   ClaimType                  // *** NEW: Type of claim (non-optional) ***
+  status      ClaimStatus @default(PENDING) // Current status
+  submittedAt DateTime    @default(now())   // Timestamp submitted
+  updatedAt   DateTime    @updatedAt        // Timestamp last updated
+  processedAt DateTime?                     // Timestamp processed (approved/rejected)
 
   // --- Relationships ---
-
-  // Each Claim MUST be submitted by exactly one Lecturer (User).
-  // This uses the other side of the "LecturerClaims" relation defined in User.
+  // Relation: The User (Lecturer) who submitted this claim (many-to-one)
   submittedBy   User   @relation("LecturerClaims", fields: [submittedById], references: [id], onDelete: Cascade) // If Lecturer deleted, delete their claims
-  submittedById String // Foreign key linking to the submitting User's id
+  submittedById String // Foreign key
 
-  // Each Claim MUST belong to one Center. This simplifies filtering claims by center for Coordinators.
-  // This uses the "CenterClaims" relation.
-  center   Center @relation("CenterClaims", fields: [centerId], references: [id], onDelete: Cascade) // If Center deleted, delete its claims
-  centerId String // Foreign key linking to the Center's id
+  // Relation: The Center this claim belongs to (many-to-one)
+  center        Center @relation("CenterClaims", fields: [centerId], references: [id], onDelete: Cascade) // If Center deleted, delete its claims
+  centerId      String // Foreign key
 
-  // Each Claim *can* be processed (approved/rejected) by one Coordinator (User).
-  // This uses the other side of the "CoordinatorClaims" relation defined in User.
-  // The '?' means this relationship is optional (null until processed).
+  // Relation: The User (Coordinator) who processed this claim (many-to-one, optional)
   processedBy   User?   @relation("CoordinatorClaims", fields: [processedById], references: [id], onDelete: SetNull) // If Coordinator deleted, set processedById to null
-  processedById String? // Foreign key linking to the processing User's id. Nullable.
+  processedById String? // Foreign key (nullable)
 
-  // --- Indexes ---
-  // Add indexes for faster lookups on fields frequently used in queries/filters
-  @@index([submittedById])
+  // --- Type-Specific Fields (all nullable) ---
+
+  // ** TEACHING Fields ** (Used if claimType is TEACHING)
+  teachingDate       DateTime? // Date of teaching session
+  teachingStartTime  String?   // Start time (e.g., "HH:MM" format)
+  teachingEndTime    String?   // End time (e.g., "HH:MM" format)
+  teachingHours      Float?    // Calculated or entered contact hours
+
+  // ** TRANSPORTATION Fields ** (Used if claimType is TRANSPORTATION)
+  transportType          TransportType? // Public or Private
+  transportDestinationTo   String?        // Destination 'To' location
+  transportDestinationFrom String?        // Destination 'From' location
+  transportRegNumber       String?        // Vehicle Registration Number (if private)
+  transportCubicCapacity   Int?           // Vehicle Cubic Capacity (cc) (if private)
+  transportAmount          Float?         // Specific amount claimed for transport (optional, might be calculated based on policy)
+
+  // ** THESIS/PROJECT Fields ** (Used if claimType is THESIS_PROJECT)
+  thesisType             ThesisType?    // Supervision or Examination
+  // Supervision Details (only if thesisType is SUPERVISION)
+  thesisSupervisionRank    SupervisionRank? // Rank/Level of supervision (e.g., PHD, MSC)
+  // Relation: Students supervised under this specific claim (one-to-many)
+  supervisedStudents     SupervisedStudent[] @relation("ClaimStudents")
+  // Examination Details (only if thesisType is EXAMINATION)
+  thesisExamCourseCode   String?    // Course code for examination
+  thesisExamDate         DateTime?  // Date of examination
+
+  // --- Block-level Indexes ---
+  @@index([submittedById]) // Index foreign keys and common query fields
   @@index([centerId])
   @@index([processedById])
+  @@index([claimType])
   @@index([status])
 }
+
+// --- NEW Model for Supervised Students ---
+// Stores details of individual students supervised under a THESIS_PROJECT claim.
+model SupervisedStudent {
+  id        String @id @default(cuid()) // Unique ID for this supervision entry
+  studentName String // Name of the student being supervised
+  thesisTitle String // Title of the student's thesis/project
+
+  // Relation: The specific Claim this supervision entry belongs to (many-to-one)
+  claimId   String // Foreign key
+  claim     Claim  @relation("ClaimStudents", fields: [claimId], references: [id], onDelete: Cascade) // If Claim deleted, delete this entry
+
+  // Relation: The User (Lecturer) who is supervising (many-to-one)
+  // This assumes the supervisor is the same as the claim submitter, which is typical.
+  supervisorId String // Foreign key
+  supervisor   User   @relation("SupervisorStudents", fields: [supervisorId], references: [id], onDelete: Cascade) // If Supervisor User deleted, delete this entry
+
+  // --- Block-level Indexes ---
+  @@index([claimId])      // Index foreign keys
+  @@index([supervisorId])
+}
+

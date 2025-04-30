@@ -1,125 +1,167 @@
-"use client"; // Needed for usePathname in NavLink
+"use client"; // Mark as Client Component due to usage of hooks like usePathname, useParams, useState, useEffect
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useParams, usePathname, useRouter } from 'next/navigation'; // Import useParams
-import { cn } from '@/lib/utils';
-import { getCurrentUserSession } from '@/lib/auth'; // We need a way to get session client-side OR pass it down
-import { Role } from '@prisma/client';
-import { LayoutDashboard, FileText, Building2, Users, ArrowLeft } from 'lucide-react'; // Icons
-import { Skeleton } from '@/components/ui/skeleton'; // For loading state
+import { useParams, usePathname, useRouter } from 'next/navigation'; // Import necessary hooks
+import { cn } from '@/lib/utils'; // Utility for conditional class names
+// Note: Accessing session directly client-side is complex. Authentication should primarily rely on middleware/server checks.
+// import { getCurrentUserSession } from '@/lib/auth'; // Avoid direct client-side use for auth checks usually
+import { Role } from '@prisma/client'; // Import Role enum if needed for client-side logic (less common)
+import { LayoutDashboard, FileText, Building2, Users, ArrowLeft, Loader2 } from 'lucide-react'; // Icons
+import { Skeleton } from '@/components/ui/skeleton'; // For loading state feedback
+import { Button } from '@/components/ui/button'; // Button component
+// Removed toast import
 
-// Helper component for navigation links within this layout
+// Helper component for rendering navigation links within this layout
+// It uses usePathname to determine the active link
 function CoordinatorNavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  const pathname = usePathname(); // Get the current full path
-  const isActive = pathname === href; // Exact match for active state
+  const pathname = usePathname(); // Get the current full URL path
+  // Determine if the link is active by checking if the current path exactly matches the link's href
+  const isActive = pathname === href;
 
   return (
     <Link
       href={href}
-      className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
-        isActive && "bg-muted text-primary font-semibold" // Active styles
+      className={cn( // Apply styles conditionally
+        "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-primary", // Base and hover styles
+        isActive && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground" // Active styles
       )}
+      aria-current={isActive ? 'page' : undefined} // Accessibility attribute for active link
     >
       {children}
     </Link>
   );
 }
 
-// Layout for managing a specific center
+// The main layout component for managing a specific center as a Coordinator
 export default function CoordinatorCenterLayout({
-  children,
+  children, // Represents the actual page content being rendered (e.g., Overview, Claims list)
 }: {
   children: React.ReactNode;
 }) {
-  const params = useParams(); // Get URL parameters (including centerId)
-  const router = useRouter();
-  const centerId = params.centerId as string; // Extract centerId
+  const params = useParams(); // Hook to get dynamic route parameters from the URL
+  const router = useRouter(); // Hook for programmatic navigation
+  const centerId = params.centerId as string; // Extract centerId, assert as string
 
-  // State for loading and validation - validation ideally happens server-side first,
-  // but client-side checks can enhance UX or handle edge cases.
-  // A better approach might involve fetching data in a server component parent and passing it down.
-  // For simplicity here, we'll assume middleware/page-level checks handle primary auth.
+  // --- State Management ---
+  // State to track if initial data/validation is loading
   const [isLoading, setIsLoading] = useState(true);
+  // State to store the fetched center name (optional, could be fetched in page)
   const [centerName, setCenterName] = useState<string | null>(null);
-  const [isValidAccess, setIsValidAccess] = useState(false); // Placeholder for access validation
+  // State to track if the current user has valid access to this center
+  const [isValidAccess, setIsValidAccess] = useState(false); // Default to false
 
-  // --- Authentication/Authorization Note ---
-  // Ideally, the parent layout or middleware already confirmed the user is a Coordinator.
-  // A robust check here would involve:
-  // 1. Getting the current user's ID (e.g., from a client-side session context or passed props).
-  // 2. Fetching the center data (server-side preferably) to verify:
-  //    a) The center with `centerId` exists.
-  //    b) The fetched center's `coordinatorId` matches the current user's ID.
-  // If validation fails, redirect.
-
-  // Simulate fetching center name and validating access (replace with actual logic if needed)
+  // --- Authentication & Data Fetching Effect ---
+  // This useEffect handles client-side validation and fetching initial data like center name.
+  // NOTE: Critical authorization (is user a coordinator? do they own this center?)
+  // SHOULD primarily happen on the SERVER (in middleware or the Page component's RSC logic)
+  // for security. This client-side check is more for UX or secondary validation.
   useEffect(() => {
     const validateAndFetch = async () => {
-        setIsLoading(true);
-        // --- Placeholder: Replace with actual fetch/validation ---
-        // Example: const data = await fetch(`/api/centers/${centerId}/details`);
-        // if (data.ok) {
-        //    const centerData = await data.json();
-        //    // Check if centerData.coordinatorId matches logged-in user ID
-        //    setCenterName(centerData.name);
-        //    setIsValidAccess(true); // Assuming validation passes
-        // } else {
-        //    setIsValidAccess(false);
-        //    router.push('/dashboard'); // Redirect if invalid access
-        // }
-        // Simulate fetch delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setCenterName(`Center ${centerId.substring(0, 6)}...`); // Placeholder name
-        setIsValidAccess(true); // Assume valid for now
+        setIsLoading(true); // Start loading
+
+        // --- Placeholder for actual validation/fetch logic ---
+        // In a real app, you might:
+        // 1. Get user session info (e.g., from context or a client-side fetch).
+        // 2. Make an API call or use a Server Action to:
+        //    - Fetch center details (`/api/centers/${centerId}/verifyAccess`).
+        //    - Verify if the center exists and if the current user is its coordinator.
+        //    - Return the center name if access is valid.
+
+        try {
+            // Simulate API call / validation delay
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            // ** Replace with actual logic **
+            // Example: Assume validation passes and fetch center name (replace with real fetch)
+            const fetchedName = `Center ${centerId.substring(0, 6)}...`; // Placeholder
+            const accessGranted = true; // Assume access is granted for this example
+
+            if (accessGranted) {
+                setCenterName(fetchedName);
+                setIsValidAccess(true);
+            } else {
+                // If access denied by server/API
+                setIsValidAccess(false);
+                console.error(`Access Denied: User does not coordinate center ${centerId}.`); // Log error instead of toast
+                router.push('/dashboard'); // Redirect if invalid access
+            }
+        } catch (error) {
+             console.error("Error validating center access:", error);
+             // Removed toast.error("Error verifying access to center.");
+             setIsValidAccess(false);
+             router.push('/dashboard'); // Redirect on error
+        } finally {
+            setIsLoading(false); // Stop loading
+        }
         // --- End Placeholder ---
-        setIsLoading(false);
     };
 
+    // Only run validation if centerId is present in the URL
     if (centerId) {
         validateAndFetch();
     } else {
-        // Handle case where centerId is missing (shouldn't happen with correct routing)
+        // If centerId is missing (should not happen with proper routing), redirect
+        console.error("CoordinatorCenterLayout: centerId is missing from params.");
         setIsValidAccess(false);
         router.push('/dashboard');
+        setIsLoading(false);
     }
+    // Run effect when centerId changes (relevant if navigating between centers client-side)
   }, [centerId, router]);
 
+  // --- Loading State ---
+  // Display skeletons or a loading indicator while validating access/fetching initial data
   if (isLoading) {
-    // Show loading skeletons while validating/fetching
     return (
-      <div className="p-4 lg:p-6">
-        <Skeleton className="h-8 w-1/4 mb-4" />
-        <Skeleton className="h-6 w-1/2 mb-6" />
-        <div className="space-y-4">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
+      <div className="p-4 lg:p-6 space-y-6">
+        {/* Skeleton for Title */}
+        <Skeleton className="h-8 w-1/2 mb-4" />
+        {/* Skeleton for Navigation */}
+        <div className="flex space-x-4 border-b pb-2">
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-8 w-24" />
+        </div>
+        {/* Skeleton for Page Content */}
+        <div className="mt-4 space-y-4">
+            <Skeleton className="h-40 w-full" />
             <Skeleton className="h-10 w-full" />
         </div>
       </div>
     );
   }
 
+  // --- Invalid Access State ---
+  // If validation failed, render nothing (or an error message) while redirecting
   if (!isValidAccess) {
-    // Render nothing or an error message while redirecting
+    // The redirect should have already been initiated in useEffect
     return null;
   }
 
-  // Base paths for navigation links within this center
+  // --- Render Layout ---
+  // Define the base path for navigation links within this specific center
   const basePath = `/coordinator/${centerId}`;
 
   return (
-    <div className="space-y-6">
-       {/* Optional: Back link or Breadcrumbs */}
-       {/* <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-primary inline-flex items-center gap-1">
-            <ArrowLeft className="h-3 w-3" /> Back to Dashboard
-       </Link> */}
+    <div className="p-4 md:p-6 lg:p-8 space-y-6"> {/* Add padding and spacing */}
+       {/* Optional: Breadcrumbs or Back Link */}
+       {/*
+       <Button variant="outline" size="sm" asChild className="mb-4">
+            <Link href="/dashboard">
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back to Main Dashboard
+            </Link>
+       </Button>
+       */}
 
-       <h1 className="text-3xl font-bold">Manage Center: {centerName || 'Loading...'}</h1>
+       {/* Center Title */}
+       <h1 className="text-2xl md:text-3xl font-bold">
+           Manage Center: {centerName || 'Loading...'}
+        </h1>
 
-       {/* Navigation Tabs/Links for this Center */}
-       <nav className="flex space-x-2 lg:space-x-4 border-b">
+       {/* Navigation Tabs/Links specific to this Center */}
+       <nav className="flex flex-wrap gap-2 border-b pb-2"> {/* Use flex-wrap for smaller screens */}
             <CoordinatorNavLink href={`${basePath}`}>
                 <LayoutDashboard className="h-4 w-4 mr-1" /> Overview
             </CoordinatorNavLink>
@@ -132,9 +174,10 @@ export default function CoordinatorCenterLayout({
              <CoordinatorNavLink href={`${basePath}/lecturers`}>
                 <Users className="h-4 w-4 mr-1" /> Lecturers
             </CoordinatorNavLink>
+            {/* Add more center-specific navigation links if needed */}
        </nav>
 
-      {/* Render the specific page content for this center */}
+      {/* Render the specific page content (child component) */}
       <div className="mt-4">
         {children}
       </div>

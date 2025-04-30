@@ -18,9 +18,14 @@ export default async function CoordinatorLandingPage() {
      // If the user is not a Coordinator (e.g., Registry admin landed here accidentally),
      // redirect them to a more appropriate dashboard.
      if (session?.role === Role.REGISTRY) {
-        redirect('/registry'); // Redirect Registry admin to their section
+        // Redirect Registry admin to their section (if they shouldn't be here)
+        // Or allow access if Registry needs to see coordinator views (depends on requirements)
+        // For now, redirecting Registry away as well.
+        console.log("CoordinatorLandingPage: Registry user accessed, redirecting to /registry.");
+        redirect('/registry');
      }
      // Redirect any other unexpected roles to the main dashboard.
+     console.log(`CoordinatorLandingPage: Non-coordinator user (Role: ${session?.role}) accessed, redirecting to /dashboard.`);
      redirect('/dashboard');
   }
 
@@ -49,7 +54,7 @@ export default async function CoordinatorLandingPage() {
         <div className="container mx-auto p-6"> {/* Basic container for layout */}
            <Alert variant="destructive"> {/* Use Shadcn Alert component for styling */}
                 <Terminal className="h-4 w-4" /> {/* Icon */}
-                <AlertTitle>Assignment Issue</AlertTitle>
+                <AlertTitle>Assignment Required</AlertTitle>
                 <AlertDescription>
                     You are registered as a Coordinator, but you have not been assigned to manage a center yet.
                     Please contact the Registry administrator for assignment.

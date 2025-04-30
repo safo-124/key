@@ -17,13 +17,16 @@ export default async function LecturerLandingPage() {
      // If the user is not a Lecturer (e.g., Registry/Coordinator landed here accidentally),
      // redirect them to a more appropriate dashboard.
      if (session?.role === Role.REGISTRY) {
+        console.log("LecturerLandingPage: Registry user accessed, redirecting to /registry.");
         redirect('/registry');
      }
      if (session?.role === Role.COORDINATOR) {
          // Redirect coordinator to their landing page which handles center redirection
+         console.log("LecturerLandingPage: Coordinator user accessed, redirecting to /coordinator.");
          redirect('/coordinator');
      }
      // Redirect any other unexpected roles to the main dashboard.
+     console.log(`LecturerLandingPage: Non-lecturer user (Role: ${session?.role}) accessed, redirecting to /dashboard.`);
      redirect('/dashboard');
   }
 
@@ -41,8 +44,8 @@ export default async function LecturerLandingPage() {
     if (lecturer?.lecturerCenterId) {
       // If a center ID is found, redirect them to their claims page for that center.
       const centerId = lecturer.lecturerCenterId;
-      console.log(`LecturerLandingPage: Redirecting Lecturer ${session.userId} to center ${centerId} claims page.`);
-      redirect(`/lecturer/${centerId}/claims`); // Perform the redirect
+      console.log(`LecturerLandingPage: Redirecting Lecturer ${session.userId} to center ${centerId} claims page (/lecturer/${centerId}/claims).`);
+      redirect(`/lecturer/${centerId}/claims`); // Perform the redirect to the claims list page
     } else {
       // If no center is assigned (lecturerCenterId is null).
       console.warn(`LecturerLandingPage: Lecturer ${session.userId} has no center assigned.`);
@@ -54,7 +57,7 @@ export default async function LecturerLandingPage() {
                 <AlertTitle>Assignment Required</AlertTitle>
                 <AlertDescription>
                     You are registered as a Lecturer, but you have not yet been assigned to a center.
-                    Please contact your Center Coordinator or the Registry administrator for assignment before you can submit claims.
+                    Please contact your Center Coordinator or the Registry administrator for assignment before you can submit or view claims.
                 </AlertDescription>
             </Alert>
         </div>

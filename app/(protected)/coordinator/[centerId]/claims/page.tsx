@@ -89,13 +89,13 @@ export default async function CoordinatorClaimsPage({ params }: CoordinatorClaim
   return (
     <div className="space-y-6"> {/* Adds vertical spacing between elements */}
       {/* Page Title */}
-      <h2 className="text-2xl font-semibold flex items-center">
-          <FileText className="mr-3 h-6 w-6 text-primary" /> {/* Icon and Title */}
+      <h1 className="text-3xl font-bold flex items-center">
+          <FileText className="mr-3 h-7 w-7 text-primary" /> {/* Icon and Title */}
           Claims for Review
-      </h2>
+      </h1>
       {/* Page Description */}
       <p className="text-muted-foreground">
-        Review claims submitted by lecturers in <strong>{center.name}</strong>. Approve or reject pending claims using the action buttons.
+        Review claims submitted by lecturers in <strong>{center.name}</strong>. Approve or reject pending claims using the action buttons in the table.
       </p>
 
       {/* Render the ClaimsTable component, passing the fetched claims data and necessary IDs */}
