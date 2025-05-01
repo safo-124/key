@@ -81,7 +81,7 @@ export async function loginUser(values: unknown): Promise<ActionResult> {
         role: user.role,
         name: user.name // Include name for display purposes
     });
-    cookies().set(SESSION_COOKIE_NAME, sessionData, {
+    (await cookies()).set(SESSION_COOKIE_NAME, sessionData, {
       httpOnly: true, // Prevent client-side JavaScript access to the cookie
       secure: process.env.NODE_ENV === 'production', // Send cookie only over HTTPS in production
       maxAge: 60 * 60 * 24 * 7, // Example: Cookie valid for 7 days
@@ -186,7 +186,7 @@ export async function logoutUser(): Promise<ActionResult> {
   try {
     console.log("Auth Action: Logging out user...");
     // Delete the session cookie
-    cookies().delete(SESSION_COOKIE_NAME);
+    (await cookies()).delete(SESSION_COOKIE_NAME);
     return { success: true, message: "Logged out successfully." };
   } catch (error) {
     console.error("Logout Action Error:", error);

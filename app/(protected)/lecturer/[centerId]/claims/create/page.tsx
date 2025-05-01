@@ -62,8 +62,8 @@ export default async function CreateClaimPage({ params }: CreateClaimPageProps) 
        {/* Back Button */}
        <Button variant="outline" size="sm" asChild>
         {/* Link back to the claims list page for this specific center */}
-        <Link href={`/lecturer/${centerId}/claims`}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to My Claims List
+        <Link href={`/lecturer/${centerId}`}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
         </Link>
       </Button>
 

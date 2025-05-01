@@ -12,24 +12,20 @@ export default async function CoordinatorLandingPage() {
   const session = getCurrentUserSession();
 
   // --- Authorization Check ---
-  // Although the parent layout might perform a check, it's good practice to verify here too.
   // Ensure the user has the COORDINATOR role.
   if (session?.role !== Role.COORDINATOR) {
-     // If the user is not a Coordinator (e.g., Registry admin landed here accidentally),
-     // redirect them to a more appropriate dashboard.
      if (session?.role === Role.REGISTRY) {
-        // Redirect Registry admin to their section (if they shouldn't be here)
-        // Or allow access if Registry needs to see coordinator views (depends on requirements)
-        // For now, redirecting Registry away as well.
         console.log("CoordinatorLandingPage: Registry user accessed, redirecting to /registry.");
         redirect('/registry');
      }
-     // Redirect any other unexpected roles to the main dashboard.
      console.log(`CoordinatorLandingPage: Non-coordinator user (Role: ${session?.role}) accessed, redirecting to /dashboard.`);
      redirect('/dashboard');
   }
 
   // --- Find Assigned Center ---
+  let centerId: string | null = null;
+  let fetchError: boolean = false;
+
   try {
     // Query the database to find a 'Center' record where the 'coordinatorId'
     // matches the currently logged-in user's ID.
@@ -40,33 +36,20 @@ export default async function CoordinatorLandingPage() {
       select: { id: true }, // We only need the 'id' of the center for redirection
     });
 
-    // --- Handle Redirection or Error Message ---
-    if (center?.id) {
-      // If a center is found (meaning the coordinator is assigned),
-      // redirect them to the dynamic route for that specific center.
-      console.log(`CoordinatorLandingPage: Redirecting Coordinator ${session.userId} to center /coordinator/${center.id}`);
-      redirect(`/coordinator/${center.id}`); // Perform the redirect
-    } else {
-      // If no center is found for this coordinator ID, they haven't been assigned.
-      console.warn(`CoordinatorLandingPage: Coordinator ${session.userId} has no center assigned.`);
-      // Display an informative message to the user.
-      return (
-        <div className="container mx-auto p-6"> {/* Basic container for layout */}
-           <Alert variant="destructive"> {/* Use Shadcn Alert component for styling */}
-                <Terminal className="h-4 w-4" /> {/* Icon */}
-                <AlertTitle>Assignment Required</AlertTitle>
-                <AlertDescription>
-                    You are registered as a Coordinator, but you have not been assigned to manage a center yet.
-                    Please contact the Registry administrator for assignment.
-                </AlertDescription>
-            </Alert>
-        </div>
-      );
+    if (center) {
+        centerId = center.id;
     }
   } catch (error) {
     // Handle any potential errors during the database query.
     console.error("CoordinatorLandingPage: Error fetching center assignment:", error);
-    // Display a generic error message if the database operation fails.
+    fetchError = true; // Flag that an error occurred during fetch
+  }
+
+  // --- Handle Redirection or Error Message ---
+  // Perform checks *after* the try...catch block
+
+  if (fetchError) {
+    // Display a generic error message if the database operation failed.
      return (
         <div className="container mx-auto p-6">
            <Alert variant="destructive">
@@ -79,4 +62,29 @@ export default async function CoordinatorLandingPage() {
         </div>
       );
   }
+
+  if (centerId) {
+    // If a center ID was successfully found, redirect them to the dynamic route for that specific center.
+    console.log(`CoordinatorLandingPage: Redirecting Coordinator ${session.userId} to center /coordinator/${centerId}`);
+    redirect(`/coordinator/${centerId}`); // Perform the redirect
+  } else {
+    // If no center is assigned (centerId is still null and no fetch error occurred).
+    console.warn(`CoordinatorLandingPage: Coordinator ${session.userId} has no center assigned.`);
+    // Display an informative message to the user.
+    return (
+      <div className="container mx-auto p-6"> {/* Basic container for layout */}
+         <Alert variant="destructive"> {/* Use Shadcn Alert component for styling */}
+              <Terminal className="h-4 w-4" /> {/* Icon */}
+              <AlertTitle>Assignment Required</AlertTitle>
+              <AlertDescription>
+                  You are registered as a Coordinator, but you have not been assigned to manage a center yet.
+                  Please contact the Registry administrator for assignment.
+              </AlertDescription>
+          </Alert>
+      </div>
+    );
+  }
+
+  // This part should ideally not be reached due to redirects or returns above.
+  // return null;
 }
