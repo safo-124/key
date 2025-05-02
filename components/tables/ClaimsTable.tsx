@@ -1,4 +1,5 @@
-"use client"; // Mark as Client Component due to hooks and interactions
+// components/tables/ClaimsTable.tsx
+"use client"; // This component uses hooks, so it's a Client Component
 
 import * as React from "react";
 import {
@@ -13,7 +14,7 @@ import {
   ColumnFiltersState // Type for filtering state
 } from "@tanstack/react-table";
 import { MoreHorizontal, ArrowUpDown, CheckCircle, XCircle, Clock, Loader2, FileText, Eye, BookOpen, Car, GraduationCap } from "lucide-react"; // Icons
-import { useRouter, useParams } from 'next/navigation'; // Hooks for navigation and params
+import { useRouter } from 'next/navigation'; // Use router for refresh
 import { format } from 'date-fns'; // For formatting dates
 import Link from "next/link"; // For linking to detail view
 
@@ -24,43 +25,55 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
 import {
-   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger
+    Tooltip, TooltipContent, TooltipProvider, TooltipTrigger
 } from "@/components/ui/tooltip"; // For showing full dates/names on hover
 import { Input } from "@/components/ui/input"; // For potential filtering
 import { toast } from "sonner"; // For notifications
-import { ClaimStatus, ClaimType, ThesisType } from "@prisma/client"; // Import necessary Prisma enums
+import { ClaimStatus, ClaimType, ThesisType, Role } from "@prisma/client"; // Import necessary Prisma enums, including Role
 
-// Import type definition from the page component
-// This type now reflects the specific fields selected in the page query
-import type { ClaimForCoordinatorView } from "@/app/(protected)/coordinator/[centerId]/claims/page";
+// Import type definition from the page component (adjust path if needed)
+// Using the Coordinator view type, assuming Registry needs the same fields for the table
+import type { ClaimForCoordinatorView } from "@/app/(protected)/coordinator/[centerId]/claims/page"; // Adjust path if needed for Registry type definition if it differs
+
 // Import server actions for approving/rejecting claims
+// ** IMPORTANT: These actions MUST be updated server-side to allow REGISTRY role **
+// Consider creating separate actions or modifying these to check for either role.
 import { approveClaim, rejectClaim } from "@/lib/actions/coordinator.actions";
 
 // --- Helper Sub-Component: Action Buttons ---
 // Renders Approve/Reject buttons for PENDING claims
+// Now considers the userRole prop
 interface ClaimActionButtonsProps {
-    claim: ClaimForCoordinatorView; // Use the updated type
+    claim: ClaimForCoordinatorView;
     centerId: string;
-    currentUserId: string; // Coordinator's ID (needed for action payload)
+    currentUserId: string; // User ID (Coordinator or Registry)
+    userRole: Role; // Role of the current user
     onActionStart: () => void; // Callback when an action starts
     onActionEnd: () => void;   // Callback when an action finishes
 }
 
-function ClaimActionButtons({ claim, centerId, currentUserId, onActionStart, onActionEnd }: ClaimActionButtonsProps) {
-    const router = useRouter(); // Hook to refresh page data
-    const [isApproving, setIsApproving] = React.useState(false); // Loading state for approve button
-    const [isRejecting, setIsRejecting] = React.useState(false); // Loading state for reject button
-    const isLoading = isApproving || isRejecting; // Combined loading state
+function ClaimActionButtons({ claim, centerId, currentUserId, userRole, onActionStart, onActionEnd }: ClaimActionButtonsProps) {
+    const router = useRouter();
+    const [isApproving, setIsApproving] = React.useState(false);
+    const [isRejecting, setIsRejecting] = React.useState(false);
+    const isLoading = isApproving || isRejecting;
+
+    // ** UPDATED: Only render buttons if the user is Coordinator or Registry AND claim is PENDING **
+    if (claim.status !== ClaimStatus.PENDING || (userRole !== Role.COORDINATOR && userRole !== Role.REGISTRY)) {
+        return null; // Hide buttons if claim not pending or user role is not allowed
+    }
 
     // Handler for the Approve action
     const handleApprove = async () => {
         setIsApproving(true);
-        onActionStart(); // Notify parent row
+        onActionStart();
         try {
-            const result = await approveClaim({ claimId: claim.id, centerId, coordinatorId: currentUserId });
+            // Pass necessary IDs - server action handles authorization based on role/ID
+            // ** IMPORTANT: `approveClaim` action needs update for Registry authorization **
+            const result = await approveClaim({ claimId: claim.id, centerId, coordinatorId: currentUserId }); // Using 'coordinatorId' param name, action must handle it
             if (result.success) {
                 toast.success(result.message || "Claim approved successfully.");
-                router.refresh(); // Refresh server data on success
+                router.refresh();
             } else {
                 toast.error(result.message || "Failed to approve claim.");
             }
@@ -69,19 +82,21 @@ function ClaimActionButtons({ claim, centerId, currentUserId, onActionStart, onA
             toast.error("An unexpected error occurred while approving.");
         } finally {
             setIsApproving(false);
-            onActionEnd(); // Notify parent row
+            onActionEnd();
         }
     };
 
     // Handler for the Reject action
     const handleReject = async () => {
         setIsRejecting(true);
-        onActionStart(); // Notify parent row
+        onActionStart();
          try {
-            const result = await rejectClaim({ claimId: claim.id, centerId, coordinatorId: currentUserId });
+            // Pass necessary IDs - server action handles authorization based on role/ID
+            // ** IMPORTANT: `rejectClaim` action needs update for Registry authorization **
+            const result = await rejectClaim({ claimId: claim.id, centerId, coordinatorId: currentUserId }); // Using 'coordinatorId' param name, action must handle it
             if (result.success) {
                 toast.success(result.message || "Claim rejected successfully.");
-                router.refresh(); // Refresh server data on success
+                router.refresh();
             } else {
                 toast.error(result.message || "Failed to reject claim.");
             }
@@ -90,14 +105,9 @@ function ClaimActionButtons({ claim, centerId, currentUserId, onActionStart, onA
             toast.error("An unexpected error occurred while rejecting.");
         } finally {
             setIsRejecting(false);
-            onActionEnd(); // Notify parent row
+            onActionEnd();
         }
     };
-
-    // Only render action buttons if the claim status is PENDING
-    if (claim.status !== ClaimStatus.PENDING) {
-        return null; // No actions for already processed claims in this component
-    }
 
     // Render Approve and Reject buttons
     return (
@@ -147,16 +157,17 @@ const renderStatusBadge = (status: ClaimStatus) => {
 const formatCurrency = (amount: number | null | undefined) => {
     if (amount === null || amount === undefined) return '-'; // Display dash if no amount
     // TODO: Consider making locale and currency dynamic or configurable
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
+    return new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS" }).format(amount); // Set to GHS
 };
 
 
 // --- Define Table Columns ---
 // Function to generate column definitions dynamically
 const getColumns = (
-    centerId: string, // Center ID for actions and links
-    currentUserId: string, // Coordinator's ID for actions
-    setRowLoading: (rowId: string, isLoading: boolean) => void // Callback to manage row loading state
+    centerId: string,
+    currentUserId: string,
+    userRole: Role, // Accept the user's role
+    setRowLoading: (rowId: string, isLoading: boolean) => void
 ): ColumnDef<ClaimForCoordinatorView>[] => [
   {
     accessorKey: "claimType",
@@ -212,14 +223,14 @@ const getColumns = (
         // Display name, fallback to email if name is null
         return <div className="text-sm text-muted-foreground truncate" title={submitter.email}>{submitter.name || submitter.email}</div>;
     },
-     sortingFn: 'text', // Use basic text sorting
-     enableSorting: true,
+    sortingFn: 'text', // Use basic text sorting
+    enableSorting: true,
   },
   {
     // Display relevant amount (only transportAmount is explicitly selected now)
     id: "amount",
-     header: ({ column }) => ( // Custom header for sorting, right-aligned
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="justify-end w-full">
+    header: ({ column }) => ( // Custom header for sorting, right-aligned
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} className="justify-end w-full pr-0">
           Amount <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
     ),
@@ -237,7 +248,7 @@ const getColumns = (
     header: "Status", // Simple header text
     cell: ({ row }) => renderStatusBadge(row.getValue("status") as ClaimStatus), // Use helper
      filterFn: (row, id, value) => { // Enable filtering by status (requires filter UI)
-      return value.includes(row.getValue(id));
+       return value.includes(row.getValue(id));
     },
     enableSorting: true, // Allow sorting by status
   },
@@ -254,10 +265,10 @@ const getColumns = (
         const fullDate = format(date, "PPP p"); // Tooltip date with time
         return (
              <TooltipProvider delayDuration={100}>
-                <Tooltip>
-                    <TooltipTrigger className="text-sm text-muted-foreground whitespace-nowrap">{formattedDate}</TooltipTrigger>
-                    <TooltipContent> <p>{fullDate}</p> </TooltipContent>
-                </Tooltip>
+                 <Tooltip>
+                     <TooltipTrigger className="text-sm text-muted-foreground whitespace-nowrap">{formattedDate}</TooltipTrigger>
+                     <TooltipContent> <p>{fullDate}</p> </TooltipContent>
+                 </Tooltip>
             </TooltipProvider>
         );
     },
@@ -268,28 +279,36 @@ const getColumns = (
     header: () => <div className="text-right">Actions</div>, // Right-aligned header
     cell: ({ row }) => { // Custom cell rendering for action buttons
         const claim = row.original;
+
+        // ** UPDATED: Determine View Details URL based on userRole **
+        const viewDetailsUrl = userRole === Role.REGISTRY
+            ? `/registry/centers/${centerId}/claims/${claim.id}`
+            : `/coordinator/${centerId}/claims/${claim.id}`;
+
         return (
             <div className="flex justify-end items-center gap-1">
                  {/* View Details Link/Button */}
                  <TooltipProvider delayDuration={100}>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-                                {/* Link to the specific claim detail page */}
-                                <Link href={`/coordinator/${centerId}/claims/${claim.id}`} aria-label="View Claim Details">
-                                    <Eye className="h-4 w-4" />
-                                </Link>
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent> <p>View Details</p> </TooltipContent>
-                    </Tooltip>
-                </TooltipProvider>
+                     <Tooltip>
+                         <TooltipTrigger asChild>
+                             <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+                                 {/* Link to the specific claim detail page based on role */}
+                                 <Link href={viewDetailsUrl} aria-label="View Claim Details">
+                                     <Eye className="h-4 w-4" />
+                                 </Link>
+                             </Button>
+                         </TooltipTrigger>
+                         <TooltipContent> <p>View Details</p> </TooltipContent>
+                     </Tooltip>
+                 </TooltipProvider>
 
                 {/* Conditional Approve/Reject Buttons */}
+                {/* Pass userRole to the action buttons component */}
                 <ClaimActionButtons
                     claim={claim}
                     centerId={centerId}
                     currentUserId={currentUserId}
+                    userRole={userRole} // Pass the role down
                     // Pass callbacks to update row loading state
                     onActionStart={() => setRowLoading(row.id, true)}
                     onActionEnd={() => setRowLoading(row.id, false)}
@@ -306,10 +325,11 @@ const getColumns = (
 interface ClaimsTableProps {
   centerId: string; // ID of the center these claims belong to
   claims: ClaimForCoordinatorView[]; // Array of claim data using the updated type
-  currentUserId: string; // Coordinator's user ID (needed for actions)
+  currentUserId: string; // User's ID (Coordinator or Registry)
+  userRole: Role; // ** ADDED: Role of the current user viewing the table **
 }
 
-export function ClaimsTable({ centerId, claims, currentUserId }: ClaimsTableProps) {
+export function ClaimsTable({ centerId, claims, currentUserId, userRole }: ClaimsTableProps) {
   // State for managing table sorting
   const [sorting, setSorting] = React.useState<SortingState>([
       // Default sort: PENDING first, then newest submitted first
@@ -323,12 +343,15 @@ export function ClaimsTable({ centerId, claims, currentUserId }: ClaimsTableProp
 
    // Callback function passed down to action buttons to update row loading state
    const setRowLoading = (rowId: string, isLoading: boolean) => {
-    setRowLoadingState(prev => ({ ...prev, [rowId]: isLoading }));
-  };
+     setRowLoadingState(prev => ({ ...prev, [rowId]: isLoading }));
+   };
 
   // Memoize column definitions, passing necessary props and callbacks
-  // Regenerates if centerId or currentUserId changes
-  const columns = React.useMemo(() => getColumns(centerId, currentUserId, setRowLoading), [centerId, currentUserId]);
+  // Regenerates if centerId, currentUserId, or userRole changes
+  const columns = React.useMemo(
+      () => getColumns(centerId, currentUserId, userRole, setRowLoading),
+      [centerId, currentUserId, userRole] // Add userRole to dependencies
+  );
 
   // Initialize the react-table instance
   const table = useReactTable({
@@ -352,20 +375,10 @@ export function ClaimsTable({ centerId, claims, currentUserId }: ClaimsTableProp
   // Render the table structure
   return (
     <div className="w-full space-y-3"> {/* Container with vertical spacing */}
-       {/* TODO: Add Filters UI (e.g., Status Dropdown, Submitter Search) */}
-       {/* Example Filter:
-       <div className="flex items-center py-4">
-            <Input
-                placeholder="Filter by submitter email..."
-                value={(table.getColumn("submittedBy.name")?.getFilterValue() as string) ?? ""} // Adjust column accessor if filtering email
-                onChange={(event) => table.getColumn("submittedBy.name")?.setFilterValue(event.target.value)}
-                className="max-w-sm"
-            />
-       </div>
-       */}
+        {/* Optional: Add Filters UI here later */}
 
-      {/* Table container with border */}
-      <div className="rounded-md border">
+        {/* Table container with border */}
+        <div className="rounded-md border">
         <Table>
           <TableHeader>
             {/* Map over header groups to render table headers */}
@@ -413,27 +426,30 @@ export function ClaimsTable({ centerId, claims, currentUserId }: ClaimsTableProp
         </Table>
       </div>
 
-      {/* Pagination Controls */}
-      <div className="flex items-center justify-end space-x-2 pt-2">
-         {/* Previous Page Button */}
-         <Button
-           variant="outline"
-           size="sm"
-           onClick={() => table.previousPage()}
-           disabled={!table.getCanPreviousPage()} // Disable if on the first page
-         >
-           Previous
-         </Button>
-         {/* Next Page Button */}
-         <Button
-           variant="outline"
-           size="sm"
-           onClick={() => table.nextPage()}
-           disabled={!table.getCanNextPage()} // Disable if on the last page
-         >
-           Next
-         </Button>
-       </div>
+       {/* Pagination Controls */}
+       <div className="flex items-center justify-end space-x-2 pt-2">
+        <span className="text-sm text-muted-foreground">
+            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+        </span>
+        {/* Previous Page Button */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => table.previousPage()}
+          disabled={!table.getCanPreviousPage()} // Disable if on the first page
+        >
+          Previous
+        </Button>
+        {/* Next Page Button */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => table.nextPage()}
+          disabled={!table.getCanNextPage()} // Disable if on the last page
+        >
+          Next
+        </Button>
+      </div>
     </div>
   );
 }

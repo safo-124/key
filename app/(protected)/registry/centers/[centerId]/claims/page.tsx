@@ -1,4 +1,4 @@
-// app/(protected)/coordinator/[centerId]/claims/page.tsx
+// app/(protected)/registry/centers/[centerId]/claims/page.tsx
 
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -8,7 +8,7 @@ import { getCurrentUserSession } from '@/lib/auth';
 import { Role, ClaimStatus, Prisma, Claim, User, ThesisType, ClaimType } from '@prisma/client'; // Import necessary types
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal, ListFilter, FileText, Search } from 'lucide-react'; // Added Search icon
+import { Terminal, FileText, Search, ArrowLeft } from 'lucide-react'; // Added ArrowLeft
 import { Card, CardContent } from "@/components/ui/card";
 
 // Import the client component for search input
@@ -16,10 +16,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ClaimSearchInput } from '@/components/claims/ClaimSearchInput';
 // Import the table component to display claims
 // ** Ensure this path is correct for your project structure **
+// NOTE: ClaimsTable must be adapted to hide actions for Registry role
 import { ClaimsTable } from '@/components/tables/ClaimsTable';
+// Import the type definition used by ClaimsTable
+// ** Ensure this path is correct for your project structure **
+import { ClaimForCoordinatorView } from '@/app/(protected)/coordinator/[centerId]/claims/page'; // Reuse type from coordinator view for now
 
 // Define props type including URL parameters and searchParams
-type CoordinatorClaimsPageProps = {
+type RegistryCenterClaimsPageProps = {
     params: {
         centerId: string; // Center ID from the URL
     };
@@ -29,72 +33,59 @@ type CoordinatorClaimsPageProps = {
     };
 };
 
-// Define the type for claim data passed to the ClaimsTable component.
-// Includes selected fields from the base Claim model and the submitting User.
-export type ClaimForCoordinatorView = Pick<Claim,
-    'id' |
-    'claimType' |
-    'status' |
-    'submittedAt' |
-    'processedAt' |
-    'transportAmount' // Keep specific transport amount (might be null)
-> & {
-    submittedBy: Pick<User, 'id' | 'name' | 'email'>; // Include submitter's ID, name, and email
-    // Add specific fields useful for identifying the claim in the list view
-    teachingDate?: Date | null;
-    transportDestinationTo?: string | null;
-    transportDestinationFrom?: string | null;
-    thesisType?: ThesisType | null;
-    thesisExamCourseCode?: string | null;
-};
-
-
 // Function to generate dynamic metadata
-export async function generateMetadata({ params }: CoordinatorClaimsPageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: RegistryCenterClaimsPageProps): Promise<Metadata> {
     const session = getCurrentUserSession();
-    // Fetch center name, ensure coordinator owns it for metadata generation
-    const center = await prisma.center.findFirst({
-        where: { id: params.centerId, coordinatorId: session?.userId },
+    // Verify user is Registry before fetching data for metadata
+    if (session?.role !== Role.REGISTRY) {
+        // Or handle appropriately if metadata generation should fail differently
+        return { title: 'Access Denied' };
+    }
+    const center = await prisma.center.findUnique({
+        where: { id: params.centerId },
         select: { name: true },
     });
     return {
-        title: `Manage Claims - ${center?.name || 'Center'}`,
-        description: `Review and manage claims submitted to the ${center?.name || 'assigned'} center.`,
+        title: `View Claims - ${center?.name || 'Center'}`,
+        description: `View claims submitted to the ${center?.name || 'selected'} center.`,
     };
 }
 
-// The main Coordinator Claims List Page component (Server Component)
-export default async function CoordinatorClaimsPage({ params, searchParams }: CoordinatorClaimsPageProps) {
+// The main Registry Center Claims List Page component (Server Component)
+export default async function RegistryCenterClaimsPage({ params, searchParams }: RegistryCenterClaimsPageProps) {
     const { centerId } = params;
     const session = getCurrentUserSession();
 
     // --- Authorization ---
     if (!session) redirect('/login');
-    if (session.role !== Role.COORDINATOR) redirect('/dashboard');
+    // ** Crucial Check: Only REGISTRY role allowed **
+    if (session.role !== Role.REGISTRY) {
+         console.warn(`RegistryCenterClaimsPage: Non-registry user (Role: ${session.role}) attempting access.`);
+         redirect('/dashboard');
+    }
 
-    // Verify coordinator is assigned to this center
+    // Verify the center exists
     const center = await prisma.center.findUnique({
         where: { id: centerId },
-        select: { name: true, coordinatorId: true }
+        select: { name: true }
     });
 
-    // If the center is not found OR the coordinator doesn't match, deny access.
-    if (!center || center.coordinatorId !== session.userId) {
-        console.warn(`CoordinatorClaimsPage: Coordinator ${session.userId} failed access check for center ${centerId}.`);
-        notFound(); // Use notFound for access denied/missing resource
+    if (!center) {
+        console.warn(`RegistryCenterClaimsPage: Center ${centerId} not found.`);
+        notFound();
     }
 
     // --- Search Logic ---
     const searchQuery = searchParams?.query || ''; // Get search query from URL
-    console.log(`[Server Page] Current Search Query: "${searchQuery}"`);
+    console.log(`[Registry Page] Current Search Query: "${searchQuery}" for Center ${centerId}`);
 
     // --- Data Fetching ---
     const whereClause: Prisma.ClaimWhereInput = {
-        centerId: centerId,
+        centerId: centerId, // Filter by the specific center
         // Apply search filter if query exists
         ...(searchQuery && {
             OR: [
-                // *** FIXED: Removed `mode: 'insensitive'` ***
+                // Search relevant fields (case-insensitive handled by DB default or remove 'mode')
                 { id: { contains: searchQuery } },
                 { submittedBy: { name: { contains: searchQuery } } },
                 { submittedBy: { email: { contains: searchQuery } } },
@@ -103,29 +94,32 @@ export default async function CoordinatorClaimsPage({ params, searchParams }: Co
                 { transportDestinationTo: { contains: searchQuery } },
                 { transportDestinationFrom: { contains: searchQuery } },
                 { thesisExamCourseCode: { contains: searchQuery } },
-                // Add search by status if needed (convert query to enum)
                 { status: { equals: Object.values(ClaimStatus).find(val => val.toLowerCase() === searchQuery.toLowerCase()) } },
             ].filter(condition => // Filter out conditions where enum conversion resulted in undefined
                  (condition.claimType && condition.claimType.equals !== undefined) ||
                  (condition.status && condition.status.equals !== undefined) ||
-                 (condition.id || condition.submittedBy || condition.transportDestinationTo || condition.transportDestinationFrom || condition.thesisExamCourseCode) // Keep non-enum conditions
+                 (condition.id || condition.submittedBy || condition.transportDestinationTo || condition.transportDestinationFrom || condition.thesisExamCourseCode)
             )
         }),
     };
 
     // Ensure the OR array is not empty after filtering, otherwise Prisma might error
-    if (whereClause.OR && whereClause.OR.length === 0) {
+    if (whereClause.OR && whereClause.OR.length === 0 && searchQuery) {
         // If the search query didn't match any valid enum and no other fields were searched,
-        // it means no results are possible. We can set OR to an impossible condition.
+        // it means no results are possible for this specific query.
+        // Set OR to an impossible condition to return zero results.
         whereClause.OR = [{ id: { equals: 'impossible_id_to_prevent_error' } }];
+    } else if (whereClause.OR && whereClause.OR.length === 0 && !searchQuery) {
+         // If OR is empty but there was no search query, remove the empty OR clause
+         delete whereClause.OR;
     }
 
 
-    let claims: ClaimForCoordinatorView[] = [];
+    let claims: ClaimForCoordinatorView[] = []; // Reuse the type for now
     try {
         claims = await prisma.claim.findMany({
-            where: whereClause, // Use the constructed where clause including search logic
-            select: { // Select only the fields needed for the table display and actions
+            where: whereClause,
+            select: { // Select fields needed for the table
                 id: true,
                 claimType: true,
                 status: true,
@@ -142,28 +136,33 @@ export default async function CoordinatorClaimsPage({ params, searchParams }: Co
                 thesisExamCourseCode: true,
             },
             orderBy: [
-                 // Keep custom sorting: PENDING first, then others by submission date descending
                  { status: 'asc' },
                  { submittedAt: 'desc' }
             ]
-            // Add pagination later if needed (take, skip)
+            // Add pagination logic here if needed
         });
-        console.log(`CoordinatorClaimsPage: Displaying ${claims.length} claims for center ${center.name} matching query "${searchQuery}"`);
+        console.log(`RegistryCenterClaimsPage: Displaying ${claims.length} claims for center ${center.name} matching query "${searchQuery}"`);
 
     } catch (error) {
-        console.error("CoordinatorClaimsPage: Error fetching claims:", error);
-        // Handle error display appropriately
-        // For now, claims array will be empty, triggering the "No claims found" message.
+        console.error("RegistryCenterClaimsPage: Error fetching claims:", error);
+        // Handle error display appropriately (e.g., show an error message)
     }
 
     return (
         <div className="space-y-6">
+             {/* Back Button */}
+             <Button variant="outline" size="sm" asChild>
+                <Link href={`/registry/centers`}> {/* Link back to centers list */}
+                    <ArrowLeft className="mr-2 h-4 w-4" /> Back to Centers List
+                </Link>
+            </Button>
+
             {/* Page Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800 flex items-center">
                         <FileText className="mr-3 h-7 w-7 text-primary" />
-                        Claims for Review
+                        View Claims
                     </h1>
                     <p className="text-lg text-muted-foreground mt-1">
                         Center: <span className="font-semibold">{center.name}</span>
@@ -172,34 +171,33 @@ export default async function CoordinatorClaimsPage({ params, searchParams }: Co
                  {/* Add other header elements if needed */}
             </div>
 
-             {/* === Search Input Component Inserted Here === */}
-            <div className="flex justify-start pt-2 pb-4"> {/* Add some padding */}
+             {/* Search Input Component */}
+            <div className="flex justify-start pt-2 pb-4">
                  <ClaimSearchInput initialQuery={searchQuery} />
             </div>
 
             {/* Claims Data Display */}
-            {/* Pass the fetched (and potentially searched) claims to your data table component */}
             {claims.length > 0 ? (
-                 // Ensure ClaimsTable component exists and accepts these props
+                 // Pass 'REGISTRY' role to potentially hide actions in the table
+                 // Ensure ClaimsTable component handles the userRole prop correctly
                  <ClaimsTable
-                    centerId={center.coordinatorId}
+                    centerId={centerId}
                     claims={claims}
-                    currentUserId={session.userId}
+                    currentUserId={session.userId} // Pass Registry user ID
+                    userRole={session.role} // Explicitly pass the role
                  />
             ) : (
                 // Display message when no claims match the search/filter
                 <Card className="mt-4 border-dashed">
                     <CardContent className="pt-6">
                         <div className="text-center text-muted-foreground">
-                            <Search className="mx-auto h-12 w-12 mb-4 opacity-50" /> {/* Use Search icon */}
+                            <Search className="mx-auto h-12 w-12 mb-4 opacity-50" />
                             <p className="font-medium">
-                                {searchQuery ? `No claims found matching "${searchQuery}".` : "No claims found for this center."}
+                                {searchQuery ? `No claims found matching "${searchQuery}".` : `No claims found for ${center.name}.`}
                             </p>
-                            {/* Optionally, add a button to clear the search if needed */}
                             {searchQuery && (
                                 <Button variant="link" asChild className="mt-2 text-primary">
-                                     {/* Link to clear the search query */}
-                                    <Link href={`/coordinator/${centerId}/claims`}>Clear Search</Link>
+                                    <Link href={`/registry/centers/${centerId}/claims`}>Clear Search</Link>
                                 </Button>
                             )}
                         </div>

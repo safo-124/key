@@ -1,8 +1,9 @@
+// lib/actions/registry.actions.ts
 "use server"; // Mark this file for server-side execution only
 
 import { z } from "zod"; // For data validation
 import { revalidatePath } from "next/cache"; // For cache invalidation after mutations
-import { Prisma } from "@prisma/client"; // Import Prisma types for error handling, etc.
+import { Prisma, ClaimStatus } from "@prisma/client"; // Import Prisma types and enums
 import bcrypt from 'bcryptjs'; // Import bcrypt for hashing passwords
 
 import prisma from "@/lib/prisma"; // Import the configured Prisma Client instance
@@ -16,6 +17,7 @@ type ActionResult = {
   message?: string; // Provides a user-friendly message (success or error)
   centerId?: string; // Optionally return the ID of the affected center
   userId?: string;   // Optionally return the ID of the affected user
+  claimId?: string; // Optionally return the ID of the affected claim
 };
 // --- ---
 
@@ -75,13 +77,23 @@ const DeleteUserSchema = z.object({
     userId: z.string().cuid("Invalid user ID format."),
 });
 
+// --- NEW: Schema for managing a claim by Registry ---
+// Similar to coordinator, but authorization logic will differ
+const ManageClaimByRegistrySchema = z.object({
+    claimId: z.string().cuid("Invalid Claim ID."),
+    centerId: z.string().cuid("Invalid Center ID."), // Used for context and revalidation
+    // We don't strictly need processorId for auth here, but might pass it for consistency
+    processorId: z.string().cuid("Invalid Processor ID."),
+});
 
-// --- Create Center Server Action ---
+
+// =====================================================================
+// Center Management Actions
+// =====================================================================
+
 /**
  * Creates a new center and assigns a coordinator.
  * Only accessible by users with the REGISTRY role.
- * @param values - Input data matching CreateCenterSchema.
- * @returns ActionResult indicating success or failure.
  */
 export async function createCenter(values: unknown): Promise<ActionResult> {
   const session = getCurrentUserSession();
@@ -107,24 +119,19 @@ export async function createCenter(values: unknown): Promise<ActionResult> {
 
     // Revalidate relevant paths
     revalidatePath('/registry/centers');
-    revalidatePath(`/registry/centers/${newCenter.id}`);
+    revalidatePath(`/registry/centers/${newCenter.id}`); // Revalidate specific center page if exists
 
     return { success: true, message: `Center "${newCenter.name}" created.`, centerId: newCenter.id };
   } catch (error) {
     console.error("Create Center Error:", error);
-    // Handle unique constraint violation on center name
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return { success: false, message: `Center name "${centerName}" already exists.` };
     return { success: false, message: "Internal error creating center." };
   }
 }
 
-
-// --- Update Center Server Action ---
 /**
  * Updates the details of an existing center (currently only the name).
  * Only accessible by users with the REGISTRY role.
- * @param values - Input data matching UpdateCenterSchema.
- * @returns ActionResult indicating success or failure.
  */
 export async function updateCenter(values: unknown): Promise<ActionResult> {
    const session = getCurrentUserSession();
@@ -140,39 +147,33 @@ export async function updateCenter(values: unknown): Promise<ActionResult> {
 
    console.log(`Registry Action: Update Center ${centerId} name to "${name}"`);
    try {
-        // Perform the update
-        const updatedCenter = await prisma.center.update({
-            where: { id: centerId },
-            data: { name }, // Update the name field
-        });
-        console.log(`Registry Action: Updated Center ${centerId}`);
+       // Perform the update
+       const updatedCenter = await prisma.center.update({
+           where: { id: centerId },
+           data: { name }, // Update the name field
+       });
+       console.log(`Registry Action: Updated Center ${centerId}`);
 
-        // Revalidate paths
-        revalidatePath('/registry/centers');
-        revalidatePath(`/registry/centers/${centerId}`);
+       // Revalidate paths
+       revalidatePath('/registry/centers');
+       revalidatePath(`/registry/centers/${centerId}`);
 
-        return { success: true, message: `Center name updated to "${updatedCenter.name}".`, centerId: updatedCenter.id };
+       return { success: true, message: `Center name updated to "${updatedCenter.name}".`, centerId: updatedCenter.id };
    } catch (error) {
-        console.error("Update Center Error:", error);
-        // Handle specific Prisma errors
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-            // Unique constraint violation (e.g., duplicate name)
-            if (error.code === 'P2002') return { success: false, message: `Center name "${name}" already exists.` };
-            // Record to update not found
-            if (error.code === 'P2025') return { success: false, message: "Center not found." };
-        }
-        return { success: false, message: "Internal error updating center." };
+       console.error("Update Center Error:", error);
+       if (error instanceof Prisma.PrismaClientKnownRequestError) {
+           if (error.code === 'P2002') return { success: false, message: `Center name "${name}" already exists.` };
+           if (error.code === 'P2025') return { success: false, message: "Center not found." };
+       }
+       return { success: false, message: "Internal error updating center." };
    }
 }
 
-// --- Delete Center Server Action ---
 /**
  * Deletes a center after unassigning its lecturers.
  * Requires coordinator to be unassigned beforehand (relies on DB constraint).
  * Only accessible by users with the REGISTRY role.
  * WARNING: This deletes associated Departments and Claims due to schema cascade rules.
- * @param values - Input data matching DeleteCenterSchema.
- * @returns ActionResult indicating success or failure.
  */
 export async function deleteCenter(values: unknown): Promise<ActionResult> {
     const session = getCurrentUserSession();
@@ -229,13 +230,13 @@ export async function deleteCenter(values: unknown): Promise<ActionResult> {
     }
 }
 
+// =====================================================================
+// User Management Actions (by Registry)
+// =====================================================================
 
-// --- Assign Lecturer to Center Server Action ---
 /**
  * Assigns an available lecturer to a specific center.
  * Only accessible by users with the REGISTRY role.
- * @param values - Input data matching ManageLecturerSchema.
- * @returns ActionResult indicating success or failure.
  */
 export async function assignLecturerToCenter(values: unknown): Promise<ActionResult> {
     const session = getCurrentUserSession();
@@ -262,8 +263,9 @@ export async function assignLecturerToCenter(values: unknown): Promise<ActionRes
         console.log(`Registry Action: Assigned Lecturer ${lecturerId} to Center ${centerId}`);
 
         // Revalidate paths
-        revalidatePath(`/registry/centers/${centerId}/lecturers`);
+        revalidatePath(`/registry/centers/${centerId}/lecturers`); // If such a page exists
         revalidatePath(`/registry/centers/${centerId}`);
+        revalidatePath('/registry/users'); // Update general user list
 
         return { success: true, message: "Lecturer assigned." };
     } catch (error) {
@@ -272,13 +274,9 @@ export async function assignLecturerToCenter(values: unknown): Promise<ActionRes
     }
 }
 
-
-// --- Unassign Lecturer from Center Server Action ---
 /**
  * Removes a lecturer's assignment from a specific center.
  * Only accessible by users with the REGISTRY role.
- * @param values - Input data matching ManageLecturerSchema.
- * @returns ActionResult indicating success or failure.
  */
 export async function unassignLecturerFromCenter(values: unknown): Promise<ActionResult> {
     const session = getCurrentUserSession();
@@ -302,6 +300,7 @@ export async function unassignLecturerFromCenter(values: unknown): Promise<Actio
         // Revalidate paths
         revalidatePath(`/registry/centers/${centerId}/lecturers`);
         revalidatePath(`/registry/centers/${centerId}`);
+        revalidatePath('/registry/users');
 
         return { success: true, message: "Lecturer removed from center." };
     } catch (error) {
@@ -310,13 +309,9 @@ export async function unassignLecturerFromCenter(values: unknown): Promise<Actio
     }
 }
 
-
-// --- Change Center Coordinator Server Action ---
 /**
  * Changes the coordinator assigned to a specific center.
  * Only accessible by users with the REGISTRY role.
- * @param values - Input data matching ChangeCoordinatorSchema.
- * @returns ActionResult indicating success or failure.
  */
 export async function changeCenterCoordinator(values: unknown): Promise<ActionResult> {
     const session = getCurrentUserSession();
@@ -344,9 +339,10 @@ export async function changeCenterCoordinator(values: unknown): Promise<ActionRe
         console.log(`Registry Action: Changed Coordinator for Center ${centerId}`);
 
         // Revalidate relevant paths
-        revalidatePath(`/registry/centers/${centerId}/coordinator`);
+        revalidatePath(`/registry/centers/${centerId}/coordinator`); // If such a page exists
         revalidatePath(`/registry/centers/${centerId}`);
         revalidatePath('/registry/centers');
+        revalidatePath('/registry/users'); // Update coordinator assignment status
 
         return { success: true, message: "Coordinator updated." };
     } catch (error) {
@@ -356,13 +352,9 @@ export async function changeCenterCoordinator(values: unknown): Promise<ActionRe
     }
 }
 
-
-// --- Create User Server Action ---
 /**
  * Creates a new user (Lecturer or Coordinator) by the Registry admin.
  * Only accessible by users with the REGISTRY role.
- * @param values - Input data matching CreateUserSchema.
- * @returns ActionResult indicating success or failure.
  */
 export async function createUser(values: unknown): Promise<ActionResult> {
     const session = getCurrentUserSession();
@@ -400,13 +392,9 @@ export async function createUser(values: unknown): Promise<ActionResult> {
     }
 }
 
-
-// --- Edit User Server Action ---
 /**
  * Edits user details (currently only name).
  * Only accessible by users with the REGISTRY role.
- * @param values - Input data matching EditUserSchema.
- * @returns ActionResult indicating success or failure.
  */
 export async function editUser(values: unknown): Promise<ActionResult> {
     const session = getCurrentUserSession();
@@ -447,14 +435,11 @@ export async function editUser(values: unknown): Promise<ActionResult> {
     }
 }
 
-// --- Delete User Server Action ---
 /**
  * Deletes a user (Lecturer or Coordinator). Prevents deleting self or other Registry admins.
  * Prevents deleting coordinators assigned to centers.
  * Only accessible by users with the REGISTRY role.
  * WARNING: Deleting a lecturer cascades to delete their claims per schema rules.
- * @param values - Input data matching DeleteUserSchema.
- * @returns ActionResult indicating success or failure.
  */
 export async function deleteUser(values: unknown): Promise<ActionResult> {
     const session = getCurrentUserSession();
@@ -514,5 +499,142 @@ export async function deleteUser(values: unknown): Promise<ActionResult> {
              return { success: false, message: "User not found. It may have already been deleted." };
          }
         return { success: false, message: "Internal error deleting user." };
+    }
+}
+
+
+// =====================================================================
+// NEW: Claim Management Actions (by Registry)
+// =====================================================================
+
+/**
+ * Approves a pending claim.
+ * Only accessible by users with the REGISTRY role.
+ * @param values - Object containing claimId, centerId, processorId (Registry user ID).
+ * @returns ActionResult indicating success or failure.
+ */
+export async function approveClaimByRegistry(values: unknown): Promise<ActionResult> {
+    // 1. Verify user role
+    const session = getCurrentUserSession();
+    if (session?.role !== Role.REGISTRY) return { success: false, message: "Unauthorized: Only Registry can approve claims via this action." };
+
+    // 2. Validate input
+    const validatedFields = ManageClaimByRegistrySchema.safeParse(values);
+    if (!validatedFields.success) return { success: false, message: "Invalid data." };
+    const { claimId, centerId, processorId } = validatedFields.data;
+
+    // 3. **Security**: Ensure the logged-in user IS the processor passed
+    if (session.userId !== processorId) return { success: false, message: "Session mismatch." };
+
+    console.log(`Registry Action: Attempting to approve Claim ${claimId} in Center ${centerId}`);
+    try {
+        // 4. Verify claim exists, belongs to the specified center, and is PENDING
+        const claim = await prisma.claim.findFirst({
+            where: {
+                id: claimId,
+                centerId: centerId, // Ensure claim is in the correct center
+            },
+            select: { status: true, submittedById: true } // Get status and submitter ID for revalidation
+        });
+
+        // Check existence
+        if (!claim) {
+            return { success: false, message: "Claim not found in the specified center." };
+        }
+        // Check if claim is already processed
+        if (claim.status !== ClaimStatus.PENDING) {
+             return { success: false, message: `Claim is already ${claim.status.toLowerCase()}. Cannot change status.` };
+        }
+
+        // 5. Update claim status
+        const updatedClaim = await prisma.claim.update({
+            where: { id: claimId },
+            data: {
+                status: ClaimStatus.APPROVED, // Set status to APPROVED
+                processedById: session.userId, // Record Registry user ID as processor
+                processedAt: new Date(),       // Record when it was processed
+            },
+        });
+        console.log(`Registry Action: Approved Claim ${claimId}`);
+
+        // 6. Revalidate relevant paths
+        revalidatePath(`/registry/centers/${centerId}/claims`); // Revalidate Registry claims list for this center
+        revalidatePath(`/registry/centers/${centerId}/claims/${claimId}`); // Revalidate Registry detail view
+        revalidatePath(`/coordinator/${centerId}/claims`); // Revalidate coordinator view
+        revalidatePath(`/lecturer/${claim.submittedById}/claims`); // Revalidate lecturer's claim list
+        revalidatePath(`/dashboard`); // Revalidate dashboard counts if applicable
+
+        // 7. Return success
+        return { success: true, message: `Claim approved successfully by Registry.`, claimId: updatedClaim.id };
+    } catch (error) {
+        console.error("Registry Approve Claim Error:", error);
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return { success: false, message: "Claim not found during update." };
+        return { success: false, message: "Internal error approving claim." };
+    }
+}
+
+/**
+ * Rejects a pending claim.
+ * Only accessible by users with the REGISTRY role.
+ * @param values - Object containing claimId, centerId, processorId (Registry user ID).
+ * @returns ActionResult indicating success or failure.
+ */
+export async function rejectClaimByRegistry(values: unknown): Promise<ActionResult> {
+    // 1. Verify user role
+    const session = getCurrentUserSession();
+    if (session?.role !== Role.REGISTRY) return { success: false, message: "Unauthorized: Only Registry can reject claims via this action." };
+
+    // 2. Validate input
+    const validatedFields = ManageClaimByRegistrySchema.safeParse(values);
+    if (!validatedFields.success) return { success: false, message: "Invalid data." };
+    const { claimId, centerId, processorId } = validatedFields.data;
+
+    // 3. **Security**: Ensure the logged-in user IS the processor passed
+    if (session.userId !== processorId) return { success: false, message: "Session mismatch." };
+
+    console.log(`Registry Action: Attempting to reject Claim ${claimId} in Center ${centerId}`);
+    try {
+        // 4. Verify claim exists, belongs to the specified center, and is PENDING
+        const claim = await prisma.claim.findFirst({
+            where: {
+                id: claimId,
+                centerId: centerId, // Ensure claim is in the correct center
+            },
+            select: { status: true, submittedById: true } // Get status and submitter ID for revalidation
+        });
+
+        // Check existence
+        if (!claim) {
+            return { success: false, message: "Claim not found in the specified center." };
+        }
+        // Check if claim is already processed
+        if (claim.status !== ClaimStatus.PENDING) {
+             return { success: false, message: `Claim is already ${claim.status.toLowerCase()}. Cannot change status.` };
+        }
+
+        // 5. Update claim status
+        const updatedClaim = await prisma.claim.update({
+            where: { id: claimId },
+            data: {
+                status: ClaimStatus.REJECTED, // Set status to REJECTED
+                processedById: session.userId, // Record Registry user ID as processor
+                processedAt: new Date(),       // Record when it was processed
+            },
+        });
+        console.log(`Registry Action: Rejected Claim ${claimId}`);
+
+        // 6. Revalidate relevant paths (same as approve)
+        revalidatePath(`/registry/centers/${centerId}/claims`);
+        revalidatePath(`/registry/centers/${centerId}/claims/${claimId}`);
+        revalidatePath(`/coordinator/${centerId}/claims`);
+        revalidatePath(`/lecturer/${claim.submittedById}/claims`);
+        revalidatePath(`/dashboard`);
+
+        // 7. Return success
+        return { success: true, message: `Claim rejected successfully by Registry.`, claimId: updatedClaim.id };
+    } catch (error) {
+        console.error("Registry Reject Claim Error:", error);
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return { success: false, message: "Claim not found during update." };
+        return { success: false, message: "Internal error rejecting claim." };
     }
 }

@@ -1,16 +1,17 @@
-"use client"; // This component uses hooks, so it's a Client Component
+"use client";
 
 import * as React from "react";
+import Link from 'next/link';
 import {
   ColumnDef,
   flexRender,
   getCoreRowModel,
-  getPaginationRowModel, // Import pagination model
-  getSortedRowModel,      // Import sorting model
-  SortingState,           // Import sorting state type
+  getPaginationRowModel,
+  getSortedRowModel,
+  SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { MoreHorizontal, ArrowUpDown } from "lucide-react"; // Icons
+import { MoreHorizontal, ArrowUpDown, Eye } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -29,19 +30,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge"; // To display coordinator status
+import { Badge } from "@/components/ui/badge";
 
-// Import the type definition from the page component
 import type { CenterWithCoordinator } from "@/app/(protected)/registry/centers/page";
 
-// Define the columns for the table
 export const columns: ColumnDef<CenterWithCoordinator>[] = [
   {
     accessorKey: "name",
-    header: ({ column }) => { // Add sorting button to header
+    header: ({ column }) => {
       return (
         <Button
           variant="ghost"
+          className="text-gray-700 hover:text-gray-900 hover:bg-gray-100"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
           Center Name
@@ -49,31 +49,43 @@ export const columns: ColumnDef<CenterWithCoordinator>[] = [
         </Button>
       );
     },
-    cell: ({ row }) => <div className="font-medium">{row.getValue("name")}</div>,
+    cell: ({ row }) => {
+        const center = row.original;
+        const centerClaimsUrl = `/registry/centers/${center.id}/claims`;
+
+        return (
+            <Link 
+              href={centerClaimsUrl} 
+              className="font-medium text-gray-900 hover:text-gray-600 hover:underline transition-colors"
+            >
+              {center.name}
+            </Link>
+        );
+    },
   },
   {
     accessorKey: "coordinator",
     header: "Coordinator",
     cell: ({ row }) => {
-      const coordinator = row.original.coordinator; // Access the full coordinator object
+      const coordinator = row.original.coordinator;
       if (!coordinator) {
-        return <Badge variant="destructive">Not Assigned</Badge>;
+        return <Badge variant="outline" className="border-gray-300 text-gray-600">Not Assigned</Badge>;
       }
-      // Display name and email
       return (
         <div>
-          <div>{coordinator.name || 'N/A'}</div>
-          <div className="text-xs text-muted-foreground">{coordinator.email}</div>
+          <div className="text-gray-800">{coordinator.name || 'N/A'}</div>
+          <div className="text-xs text-gray-500">{coordinator.email}</div>
         </div>
       );
     },
   },
   {
     accessorKey: "createdAt",
-    header: ({ column }) => { // Add sorting button to header
+    header: ({ column }) => {
       return (
         <Button
           variant="ghost"
+          className="text-gray-700 hover:text-gray-900 hover:bg-gray-100"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
         >
           Created At
@@ -83,38 +95,44 @@ export const columns: ColumnDef<CenterWithCoordinator>[] = [
     },
     cell: ({ row }) => {
       const date = new Date(row.getValue("createdAt"));
-      // Format date for better readability
       const formattedDate = date.toLocaleDateString('en-US', {
          year: 'numeric', month: 'short', day: 'numeric'
       });
-      return <div>{formattedDate}</div>;
+      return <div className="text-gray-700">{formattedDate}</div>;
     },
   },
   {
-    id: "actions", // Unique ID for the actions column
+    id: "actions",
     cell: ({ row }) => {
-      const center = row.original; // Get the full center data for this row
+      const center = row.original;
+      const centerClaimsUrl = `/registry/centers/${center.id}/claims`;
 
       return (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-8 w-8 p-0">
+            <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-gray-100">
               <span className="sr-only">Open menu</span>
-              <MoreHorizontal className="h-4 w-4" />
+              <MoreHorizontal className="h-4 w-4 text-gray-600" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          <DropdownMenuContent align="end" className="w-48 border border-gray-200 shadow-lg">
+            <DropdownMenuLabel className="text-gray-700 font-medium">Actions</DropdownMenuLabel>
+            <DropdownMenuItem asChild>
+                 <Link href={centerClaimsUrl} className="flex items-center cursor-pointer text-gray-700 hover:bg-gray-100">
+                    <Eye className="mr-2 h-4 w-4 text-gray-500" /> View Claims
+                 </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem
+              className="text-gray-700 hover:bg-gray-100"
               onClick={() => navigator.clipboard.writeText(center.id)}
             >
               Copy Center ID
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {/* TODO: Implement View/Edit/Delete functionality */}
-            <DropdownMenuItem disabled>View Details (TBD)</DropdownMenuItem>
-            <DropdownMenuItem disabled>Edit Center (TBD)</DropdownMenuItem>
-            <DropdownMenuItem disabled className="text-destructive focus:text-destructive focus:bg-destructive/10">
+            <DropdownMenuSeparator className="bg-gray-100" />
+            <DropdownMenuItem className="text-gray-500 hover:bg-gray-100" disabled>
+              Edit Center (TBD)
+            </DropdownMenuItem>
+            <DropdownMenuItem className="text-gray-500 hover:bg-gray-100" disabled>
                 Delete Center (TBD)
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -124,43 +142,43 @@ export const columns: ColumnDef<CenterWithCoordinator>[] = [
   },
 ];
 
-// Interface for the component props
 interface CentersTableProps {
   data: CenterWithCoordinator[];
 }
 
 export function CentersTable({ data }: CentersTableProps) {
-  const [sorting, setSorting] = React.useState<SortingState>([]); // State for sorting
+  const [sorting, setSorting] = React.useState<SortingState>([]);
 
-  // Initialize the table instance
   const table = useReactTable({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(), // Enable pagination
-    getSortedRowModel: getSortedRowModel(),       // Enable sorting
-    onSortingChange: setSorting,                // Connect sorting state
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    onSortingChange: setSorting,
     state: {
-      sorting,                                  // Pass sorting state
+      sorting,
     },
-    initialState: {                             // Set initial pagination state
+    initialState: {
         pagination: {
-            pageSize: 10, // Show 10 rows per page
+            pageSize: 10,
         },
     },
   });
 
   return (
     <div className="w-full space-y-4">
-      {/* Table Rendering */}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
+      <div className="rounded-lg border border-gray-200 overflow-hidden">
+        <Table className="min-w-full divide-y divide-gray-200">
+          <TableHeader className="bg-gray-50">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id}>
+                    <TableHead 
+                      key={header.id}
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -173,15 +191,19 @@ export function CentersTable({ data }: CentersTableProps) {
               </TableRow>
             ))}
           </TableHeader>
-          <TableBody>
+          <TableBody className="bg-white divide-y divide-gray-200">
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
+                  className="hover:bg-gray-50"
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell 
+                      key={cell.id}
+                      className="px-6 py-4 whitespace-nowrap"
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()
@@ -194,7 +216,7 @@ export function CentersTable({ data }: CentersTableProps) {
               <TableRow>
                 <TableCell
                   colSpan={columns.length}
-                  className="h-24 text-center"
+                  className="h-24 text-center text-gray-500"
                 >
                   No centers found.
                 </TableCell>
@@ -204,25 +226,26 @@ export function CentersTable({ data }: CentersTableProps) {
         </Table>
       </div>
 
-       {/* Pagination Controls */}
-       <div className="flex items-center justify-end space-x-2 py-4">
-         <Button
-           variant="outline"
-           size="sm"
-           onClick={() => table.previousPage()}
-           disabled={!table.getCanPreviousPage()}
-         >
-           Previous
-         </Button>
-         <Button
-           variant="outline"
-           size="sm"
-           onClick={() => table.nextPage()}
-           disabled={!table.getCanNextPage()}
-         >
-           Next
-         </Button>
-       </div>
+      <div className="flex items-center justify-end space-x-2 py-4">
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-gray-300 text-gray-700 hover:bg-gray-50"
+          onClick={() => table.previousPage()}
+          disabled={!table.getCanPreviousPage()}
+        >
+          Previous
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-gray-300 text-gray-700 hover:bg-gray-50"
+          onClick={() => table.nextPage()}
+          disabled={!table.getCanNextPage()}
+        >
+          Next
+        </Button>
+      </div>
     </div>
   );
 }
