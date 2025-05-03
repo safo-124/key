@@ -3,26 +3,23 @@ import { redirect } from 'next/navigation';
 import prisma from '@/lib/prisma';
 import { Role } from '@prisma/client';
 import { getCurrentUserSession } from '@/lib/auth';
-import { CreateCenterForm } from '@/components/forms/CreateCenterForm'; // We'll create this next
+import { CreateCenterForm } from '@/components/forms/CreateCenterForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Building2 } from 'lucide-react';
 
-// Metadata for the page
 export const metadata: Metadata = {
   title: 'Create New Center',
   description: 'Add a new center and assign a coordinator.',
 };
 
-// Type for the coordinator data passed to the form's select input
 export type AvailableCoordinator = {
   id: string;
   name: string | null;
   email: string;
 };
 
-// The Create Center Page component (Server Component)
 export default async function CreateCenterPage() {
-  // Role check for security
-  const session = getCurrentUserSession();
+  const session = await getCurrentUserSession();
   if (session?.role !== Role.REGISTRY) {
     console.warn("CreateCenterPage: Non-registry user attempting access.");
     redirect('/dashboard');
@@ -32,7 +29,6 @@ export default async function CreateCenterPage() {
   let fetchError: string | null = null;
 
   try {
-    // Fetch users who have the COORDINATOR role
     const potentialCoordinators = await prisma.user.findMany({
       where: {
         role: Role.COORDINATOR,
@@ -41,14 +37,13 @@ export default async function CreateCenterPage() {
         id: true,
         name: true,
         email: true,
-        coordinatedCenter: true, // Check if they are already linked to a center
+        coordinatedCenter: true,
       },
     });
 
-    // Filter out coordinators who are already assigned to a center
     availableCoordinators = potentialCoordinators
-      .filter(user => !user.coordinatedCenter) // Keep only users where coordinatedCenter is null
-      .map(({ id, name, email }) => ({ id, name, email })); // Map to the desired format
+      .filter(user => !user.coordinatedCenter)
+      .map(({ id, name, email }) => ({ id, name, email }));
 
     console.log(`CreateCenterPage: Found ${availableCoordinators.length} available coordinators.`);
 
@@ -59,19 +54,38 @@ export default async function CreateCenterPage() {
 
   return (
     <div className="space-y-6">
-       <Card className="max-w-2xl mx-auto"> {/* Center the card */}
-        <CardHeader>
-          <CardTitle>Create New Center</CardTitle>
-          <CardDescription>
-            Enter the name for the new center and select an available coordinator to manage it.
-          </CardDescription>
+      <Card className="max-w-2xl mx-auto border-0 shadow-lg rounded-xl overflow-hidden">
+        <CardHeader className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
+          <div className="flex items-center gap-3">
+            <Building2 className="h-6 w-6" />
+            <div>
+              <CardTitle className="text-white">Create New Center</CardTitle>
+              <CardDescription className="text-blue-100">
+                Enter center details and assign a coordinator
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-           {/* Pass the fetched coordinators and any fetch error to the form */}
-           <CreateCenterForm
+        <CardContent className="p-6">
+          <div className="space-y-4">
+            {fetchError && (
+              <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-md">
+                <p className="text-sm text-red-700">{fetchError}</p>
+              </div>
+            )}
+            
+            <div className="space-y-2">
+              <h3 className="text-lg font-medium text-gray-900">Center Information</h3>
+              <p className="text-sm text-gray-500">
+                Provide the name for the new center and select an available coordinator
+              </p>
+            </div>
+
+            <CreateCenterForm
               availableCoordinators={availableCoordinators}
               fetchError={fetchError}
             />
+          </div>
         </CardContent>
       </Card>
     </div>

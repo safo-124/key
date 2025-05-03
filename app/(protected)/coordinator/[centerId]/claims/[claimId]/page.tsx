@@ -11,7 +11,7 @@ import { ArrowLeft } from 'lucide-react';
 
 // Import the Client Component that handles display and printing
 // Make sure the path is correct for your project structure
-import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView';
+import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust if path changed
 
 // Define props type including URL parameters
 type ViewClaimPageProps = {
@@ -32,26 +32,40 @@ export type ClaimWithDetailsForView = Claim & {
 
 
 // Function to generate dynamic metadata for the page
+// *** FIXED: Added async keyword ***
 export async function generateMetadata({ params }: ViewClaimPageProps): Promise<Metadata> {
     const session = getCurrentUserSession();
     // Fetch minimal data for title, checking access implicitly
-    const claim = await prisma.claim.findFirst({
-        where: {
-            id: params.claimId,
-            centerId: params.centerId,
-            // Ensure the center is coordinated by the current user (basic check)
-            center: {
-                coordinatorId: session?.role === Role.COORDINATOR ? session.userId : undefined
-            }
-         },
-        select: { claimType: true, center: { select: { name: true } } }, // Fetch type for better title
-    });
+    // Basic check: Ensure user is likely a coordinator before fetching
+    if (session?.role !== Role.COORDINATOR) {
+        return { title: "Access Denied" };
+    }
+    // Added try...catch for robustness
+    try {
+        const claim = await prisma.claim.findFirst({
+            where: {
+                id: params.claimId,
+                centerId: params.centerId,
+                // Ensure the center is coordinated by the current user (basic check)
+                center: {
+                    coordinatorId: session.userId // Check against session userId directly
+                }
+            },
+            select: { claimType: true, center: { select: { name: true } } }, // Fetch type for better title
+        });
 
-    const claimTypeString = claim?.claimType ? ` (${claim.claimType.replace('_', ' ')})` : '';
-    return {
-        title: claim ? `Review Claim ${claimTypeString}` : 'Review Claim',
-        description: `Review details for claim ${params.claimId} in center ${claim?.center?.name || params.centerId}.`,
-    };
+        const claimTypeString = claim?.claimType ? ` (${claim.claimType.replace('_', ' ')})` : '';
+        return {
+            title: claim ? `Review Claim ${claimTypeString}` : 'Review Claim',
+            description: `Review details for claim ${params.claimId} in center ${claim?.center?.name || params.centerId}.`,
+        };
+    } catch (error) {
+        console.error("Error generating metadata:", error);
+        return {
+            title: "Error Loading Claim",
+            description: "Could not load claim details.",
+        };
+    }
 }
 
 
@@ -61,34 +75,60 @@ export default async function ViewClaimPage({ params }: ViewClaimPageProps) {
     const session = getCurrentUserSession(); // Get current user session
 
     // --- Authorization Check ---
-    // 1. Must be a Coordinator
-    if (session?.role !== Role.COORDINATOR) {
-        console.warn(`ViewClaimPage: Non-coordinator user (Role: ${session?.role}) attempting access.`);
+    console.log("[ViewClaimPage] Session:", session); // Log session details
+    console.log("[ViewClaimPage] Params:", params); // Log params
+
+    // 1. Must be logged in
+    if (!session) {
+        console.log("[ViewClaimPage] No session, redirecting to login.");
+        redirect('/login');
+    }
+    // 2. Must be a Coordinator
+    if (session.role !== Role.COORDINATOR) {
+        console.warn(`[ViewClaimPage] Non-coordinator user (Role: ${session?.role}) attempting access. Redirecting.`);
         redirect('/dashboard'); // Redirect non-coordinators
     }
 
-    // 2. Fetch the specific claim details, ensuring it belongs to the coordinator's center
-    // Fetch all data required by the ClaimDetailsView component
-    const claim: ClaimWithDetailsForView | null = await prisma.claim.findUnique({
-        where: { id: claimId },
-        include: {
-            submittedBy: { select: { id: true, name: true, email: true } },
-            processedBy: { select: { id: true, name: true, email: true } }, // Include email if needed
-            center: { select: { id: true, name: true, coordinatorId: true } }, // Need coordinatorId for validation
-            supervisedStudents: true, // Include all fields for supervised students
-        }
-    });
+    let claim: ClaimWithDetailsForView | null = null;
+    try {
+        // 3. Fetch the specific claim details
+        console.log(`[ViewClaimPage] Fetching claim with ID: ${claimId}`);
+        claim = await prisma.claim.findUnique({
+            where: { id: claimId },
+            include: {
+                submittedBy: { select: { id: true, name: true, email: true } },
+                processedBy: { select: { id: true, name: true, email: true } }, // Include email if needed
+                center: { select: { id: true, name: true, coordinatorId: true } }, // Need coordinatorId for validation
+                supervisedStudents: true, // Include all fields for supervised students
+            }
+        });
+        console.log("[ViewClaimPage] Fetched Claim Data:", claim); // Log the fetched claim data
 
-    // 3. Validate fetched data
+    } catch (error) {
+         console.error("[ViewClaimPage] Error fetching claim data:", error);
+         // Consider showing an error message instead of just notFound
+         // For now, fall through to validation which will trigger notFound if claim is null
+    }
+
+    // 4. Validate fetched data
     //    a) Claim must exist
     //    b) Claim's centerId must match the URL centerId
     //    c) The center's coordinatorId must match the logged-in user's ID
-    if (!claim || claim.centerId !== centerId || claim.center?.coordinatorId !== session.userId) {
-        console.warn(`ViewClaimPage: Coordinator ${session.userId} failed access check for claim ${claimId} in center ${centerId}.`);
-        notFound(); // Show "Not Found" page
+    if (!claim) {
+         console.warn(`[ViewClaimPage] Claim ${claimId} not found. Triggering notFound().`);
+         notFound();
+    } else if (claim.centerId !== centerId) {
+         // This is the validation failing according to your logs
+         console.warn(`[ViewClaimPage] Claim's centerId (${claim.centerId}) does not match URL centerId (${centerId}). Triggering notFound(). Access denied.`);
+         // IMPORTANT: Fix the link that led to this page. The URL has the wrong centerId for this claimId.
+         notFound();
+    } else if (claim.center?.coordinatorId !== session.userId) {
+         console.warn(`[ViewClaimPage] Claim's center coordinatorId (${claim.center?.coordinatorId}) does not match session userId (${session.userId}). Triggering notFound(). Access denied.`);
+         notFound();
     }
 
-    console.log(`ViewClaimPage: Displaying details for ${claim.claimType} claim ${claim.id} in center ${claim.center.name}`);
+    // If all checks pass:
+    console.log(`[ViewClaimPage] Access validated. Displaying details for ${claim.claimType} claim ${claim.id} in center ${claim.center?.name}`);
 
     // --- Render Page ---
     return (
@@ -106,9 +146,6 @@ export default async function ViewClaimPage({ params }: ViewClaimPageProps) {
                 claim={claim}
                 currentCoordinatorId={session.userId} // Pass the coordinator's ID for potential use in client actions
             />
-
-            {/* Note: The detailed rendering logic (Cards, Badges, Tables, Action Buttons) */}
-            {/* is now handled within ClaimDetailsView */}
 
         </div>
     );

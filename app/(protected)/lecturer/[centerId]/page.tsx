@@ -1,89 +1,67 @@
 // app/(protected)/lecturer/[centerId]/page.tsx
-
-import { redirect, notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Metadata } from 'next';
-import prisma from '@/lib/prisma'; // Import Prisma client
-import { getCurrentUserSession } from '@/lib/auth'; // Import the auth helper
-import { Role, ClaimStatus } from '@prisma/client'; // Import enums
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"; // Shadcn Card
-import { Button } from '@/components/ui/button'; // Shadcn Button
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Shadcn Alert
-import { Badge } from "@/components/ui/badge"; // Shadcn Badge
-import { Terminal, LayoutDashboard, Building, Users, FileText, Settings, FilePlus, AlertCircle, CheckCircle, XCircle, Clock, ArrowRight, Hand, Building2, Target, BookUser, Hourglass, Check, Ban } from 'lucide-react'; // Added more specific icons
+import prisma from '@/lib/prisma';
+import { getCurrentUserSession } from '@/lib/auth';
+import { Role, ClaimStatus } from '@prisma/client';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { BookUser, Hourglass, Check, Ban, FilePlus, FileText, AlertCircle } from 'lucide-react';
 
-// Define props type including URL parameters
 type LecturerCenterPageProps = {
     params: {
-        centerId: string; // Center ID from the URL
+        centerId: string;
     };
 };
 
-// Function to generate dynamic metadata for the page
 export async function generateMetadata({ params }: LecturerCenterPageProps): Promise<Metadata> {
-    const session = getCurrentUserSession();
-    // Fetch center name for the title, basic auth check
+    const session = await getCurrentUserSession();
     const center = await prisma.center.findFirst({
         where: {
             id: params.centerId,
-            // Ensure the current user is a lecturer assigned to this center
             lecturers: { some: { id: session?.userId, role: Role.LECTURER } }
-         },
+        },
         select: { name: true },
     });
 
     return {
-        title: `Lecturer Dashboard - ${center?.name || 'Center'}`,
-        description: `Your dashboard for managing claims within the ${center?.name || 'assigned'} center.`,
+        title: `${center?.name || 'Center'} Dashboard`,
+        description: `Lecturer dashboard for ${center?.name || 'your assigned'} center`,
     };
 }
 
-
-// Helper function to format numbers (optional)
 const formatCount = (count: number): string => count.toLocaleString();
 
-// The main Lecturer Center Landing Page component (Server Component)
 export default async function LecturerCenterPage({ params }: LecturerCenterPageProps) {
     const { centerId } = params;
-    // Get the current user session on the server
-    const session = getCurrentUserSession();
+    const session = await getCurrentUserSession();
 
-    // --- Authorization & Data Fetching ---
-    // 1. If no session, redirect to login
-    if (!session) {
-        console.log("LecturerCenterPage: No session found, redirecting to login.");
-        redirect('/login');
-    }
-
-    // 2. Must be a Lecturer
-    if (session.role !== Role.LECTURER) {
-        console.warn(`LecturerCenterPage: Non-lecturer user (Role: ${session.role}) attempting access.`);
-        redirect('/dashboard'); // Redirect to general dashboard
-    }
+    if (!session) redirect('/login');
+    if (session.role !== Role.LECTURER) redirect('/dashboard');
 
     let assignmentError: string | null = null;
     let centerName: string | null = null;
-    let stats: { pending: number; approved: number; rejected: number } = { pending: 0, approved: 0, rejected: 0 };
+    let stats = { pending: 0, approved: 0, rejected: 0 };
 
     try {
-        // 3. Verify Lecturer is assigned to THIS center and get center name
         const lecturerData = await prisma.user.findUnique({
             where: { id: session.userId },
-            select: { lecturerCenterId: true, lecturerCenter: { select: { name: true } } },
+            select: { 
+                lecturerCenterId: true, 
+                lecturerCenter: { select: { name: true } } 
+            },
         });
 
         if (!lecturerData?.lecturerCenterId) {
-            assignmentError = "You are not assigned to any Center. Please contact your Coordinator or the Registry.";
+            assignmentError = "You are not assigned to any Center. Please contact your Coordinator.";
         } else if (lecturerData.lecturerCenterId !== centerId) {
-            // If the user is assigned, but not to the center they are trying to access via URL
-            console.warn(`LecturerCenterPage: Lecturer ${session.userId} attempting access to incorrect center ${centerId}. Assigned to ${lecturerData.lecturerCenterId}. Redirecting.`);
-            // Redirect them to their actual assigned center's page
             redirect(`/lecturer/${lecturerData.lecturerCenterId}`);
         } else {
-            // User is assigned to the correct center
             centerName = lecturerData.lecturerCenter?.name;
 
-            // 4. Fetch claim statistics for this lecturer in this center
             const claimCounts = await prisma.claim.groupBy({
                 by: ['status'],
                 where: { submittedById: session.userId, centerId: centerId },
@@ -97,19 +75,15 @@ export default async function LecturerCenterPage({ params }: LecturerCenterPageP
             });
         }
     } catch (error) {
-        console.error("LecturerCenterPage: Error fetching data:", error);
-        assignmentError = "Could not load dashboard details due to an error.";
-        // Depending on the error, you might still want to show part of the page or redirect
+        console.error("LecturerCenterPage error:", error);
+        assignmentError = "Could not load dashboard data. Please try again later.";
     }
 
-    // --- Render Page Content ---
-
-    // Display assignment error if present
     if (assignmentError) {
         return (
-            <div className="container mx-auto p-6">
+            <div className="p-6">
                 <Alert variant="destructive">
-                    <Terminal className="h-4 w-4" />
+                    <AlertCircle className="h-4 w-4" />
                     <AlertTitle>Assignment Issue</AlertTitle>
                     <AlertDescription>{assignmentError}</AlertDescription>
                 </Alert>
@@ -117,107 +91,139 @@ export default async function LecturerCenterPage({ params }: LecturerCenterPageP
         );
     }
 
-    // Define links based on fetched centerId
-    const lecturerClaimsLink = `/lecturer/${centerId}/claims`;
-    const lecturerCreateLink = `/lecturer/${centerId}/claims/create`;
-    const cardHoverStyle = "transition-all duration-300 ease-in-out hover:shadow-lg hover:-translate-y-1"; // Enhanced hover effect
+    const claimsLink = `/lecturer/${centerId}/claims`;
+    const createLink = `/lecturer/${centerId}/claims/create`;
 
     return (
-        <div className="space-y-10"> {/* Increased overall spacing */}
-
-            {/* Welcome Banner Section - Updated to Blue Gradient */}
-            <div className="relative p-8 rounded-xl overflow-hidden bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 text-white shadow-xl"> {/* Changed gradient */}
-                 {/* Optional: subtle background pattern or element */}
-                 <div className="absolute inset-0 bg-black/10 backdrop-blur-sm"></div>
-                 <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
-                    <div className="space-y-2">
-                        <h1 className="text-3xl lg:text-4xl font-bold flex items-center gap-3">
-                            <BookUser className="h-9 w-9 opacity-90" /> {/* Slightly larger icon */}
-                            Lecturer Dashboard
+        <div className="space-y-8">
+            {/* Header Section */}
+            <div className="bg-gradient-to-r from-blue-50 to-white p-6 rounded-lg">
+                <div className="flex items-center justify-between gap-4">
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight text-blue-900 flex items-center gap-3">
+                            <BookUser className="h-8 w-8 text-blue-700" />
+                            Dashboard
                         </h1>
-                        <p className="text-lg text-blue-100/90"> {/* Adjusted text color for blue bg */}
-                            Welcome, <span className="font-semibold">{session.name || 'Lecturer'}</span>! Manage your claims for the <strong className="font-semibold">{centerName || 'assigned'}</strong> center.
+                        <p className="text-blue-800 mt-2">
+                            Welcome back, <span className="font-semibold text-blue-900">{session.name}</span>.
+                            Here's your claim activity summary for <span className="font-medium">{centerName}</span>.
                         </p>
                     </div>
-                    {/* Adjusted badge colors for blue background */}
-                    <Badge variant="secondary" className="capitalize text-lg bg-white/90 text-blue-900 px-4 py-1.5 rounded-full shadow-md font-medium">
-                        {session.role.toLowerCase()}
+                    <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200">
+                        Lecturer
                     </Badge>
                 </div>
             </div>
 
-            {/* Statistics Section - Enhanced Cards */}
-            <section className="space-y-5">
-                 {/* Changed accent border to match new banner color */}
-                <h2 className="text-2xl font-semibold text-gray-800 border-l-4 border-blue-700 pl-3">Your Claim Summary</h2>
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {/* Pending Claims Card */}
-                    <Link href={`${lecturerClaimsLink}?status=PENDING`} className="block group">
-                        <Card className={`${cardHoverStyle} border-l-4 border-yellow-500`}>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-base font-medium text-yellow-700">Pending Claims</CardTitle>
-                                <Hourglass className="h-5 w-5 text-yellow-500" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-3xl font-bold text-gray-800">{formatCount(stats.pending)}</div>
-                                <p className="text-sm text-muted-foreground mt-1">Awaiting coordinator review</p>
-                            </CardContent>
-                        </Card>
-                    </Link>
-                    {/* Approved Claims Card */}
-                    <Link href={`${lecturerClaimsLink}?status=APPROVED`} className="block group">
-                        <Card className={`${cardHoverStyle} border-l-4 border-green-600`}>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-base font-medium text-green-700">Approved Claims</CardTitle>
-                                <Check className="h-5 w-5 text-green-600" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-3xl font-bold text-gray-800">{formatCount(stats.approved)}</div>
-                                <p className="text-sm text-muted-foreground mt-1">Approved for processing</p>
-                            </CardContent>
-                        </Card>
-                    </Link>
-                    {/* Rejected Claims Card */}
-                    <Link href={`${lecturerClaimsLink}?status=REJECTED`} className="block group">
-                        <Card className={`${cardHoverStyle} border-l-4 border-red-600`}>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-base font-medium text-red-700">Rejected Claims</CardTitle>
-                                <Ban className="h-5 w-5 text-red-600" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-3xl font-bold text-gray-800">{formatCount(stats.rejected)}</div>
-                                <p className="text-sm text-muted-foreground mt-1">Rejected by coordinator</p>
-                            </CardContent>
-                        </Card>
-                    </Link>
-                </div>
-            </section>
+            {/* Stats Grid */}
+            <div className="grid gap-4 md:grid-cols-3">
+                <StatCard 
+                    title="Pending Claims"
+                    value={stats.pending}
+                    icon={<Hourglass className="h-5 w-5 text-blue-600" />}
+                    href={`${claimsLink}?status=PENDING`}
+                    color="border-blue-200 bg-blue-50"
+                />
+                <StatCard 
+                    title="Approved Claims"
+                    value={stats.approved}
+                    icon={<Check className="h-5 w-5 text-blue-600" />}
+                    href={`${claimsLink}?status=APPROVED`}
+                    color="border-blue-200 bg-blue-50"
+                />
+                <StatCard 
+                    title="Rejected Claims"
+                    value={stats.rejected}
+                    icon={<Ban className="h-5 w-5 text-blue-600" />}
+                    href={`${claimsLink}?status=REJECTED`}
+                    color="border-blue-200 bg-blue-50"
+                />
+            </div>
 
-            {/* Actions Section - Clearer Call to Action */}
-            <section className="space-y-5">
-                 {/* Changed accent border to match new banner color */}
-                 <h2 className="text-2xl font-semibold text-gray-800 border-l-4 border-blue-700 pl-3">Quick Actions</h2>
-                 <Card className="bg-gradient-to-r from-gray-50 to-gray-100 shadow-sm border border-gray-200">
-                     <CardHeader>
-                        <CardTitle className="text-xl text-gray-800">Ready to Submit?</CardTitle>
-                        <CardDescription>Start a new claim submission or review your past claims.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex flex-col sm:flex-row items-center gap-4 pt-2 pb-4">
-                         {/* Updated button colors to match blue theme */}
-                        <Button asChild size="lg" className="w-full sm:w-auto bg-blue-700 hover:bg-blue-800 text-white shadow-md transition-transform duration-200 hover:scale-105 focus-visible:ring-blue-500">
-                            <Link href={lecturerCreateLink}>
-                                <FilePlus className="mr-2 h-5 w-5"/> Submit New Claim
-                            </Link>
-                        </Button>
-                        <Button asChild size="lg" variant="outline" className="w-full sm:w-auto border-blue-700 text-blue-800 hover:bg-blue-50 hover:text-blue-900 focus-visible:ring-blue-500">
-                            <Link href={lecturerClaimsLink}>
-                                <FileText className="mr-2 h-5 w-5"/> View My Claims History
-                            </Link>
-                        </Button>
-                    </CardContent>
-                </Card>
-            </section>
-
+            {/* Actions Section */}
+            <div className="grid gap-4 md:grid-cols-2">
+                <ActionCard 
+                    title="Submit New Claim"
+                    description="Start a new claim submission"
+                    icon={<FilePlus className="h-5 w-5 text-blue-600" />}
+                    href={createLink}
+                    buttonText="Create Claim"
+                    variant="default"
+                    color="bg-blue-50 border-blue-100"
+                />
+                <ActionCard 
+                    title="View All Claims"
+                    description="Review your claim history"
+                    icon={<FileText className="h-5 w-5 text-blue-600" />}
+                    href={claimsLink}
+                    buttonText="View Claims"
+                    variant="outline"
+                    color="bg-blue-50 border-blue-100"
+                />
+            </div>
         </div>
+    );
+}
+
+function StatCard({ title, value, icon, href, color }: {
+    title: string;
+    value: number;
+    icon: React.ReactNode;
+    href: string;
+    color: string;
+}) {
+    return (
+        <Link href={href}>
+            <Card className={`border-l-4 ${color} hover:shadow-md transition-all hover:border-blue-300`}>
+                <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                    <CardTitle className="text-sm font-medium text-blue-800">{title}</CardTitle>
+                    {icon}
+                </CardHeader>
+                <CardContent>
+                    <div className="text-2xl font-bold text-blue-900">{formatCount(value)}</div>
+                </CardContent>
+            </Card>
+        </Link>
+    );
+}
+
+function ActionCard({ title, description, icon, href, buttonText, variant, color }: {
+    title: string;
+    description: string;
+    icon: React.ReactNode;
+    href: string;
+    buttonText: string;
+    variant: "default" | "outline";
+    color: string;
+}) {
+    return (
+        <Card className={`${color} border`}>
+            <CardHeader>
+                <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-full bg-blue-100">
+                        {icon}
+                    </div>
+                    <div>
+                        <CardTitle className="text-lg text-blue-900">{title}</CardTitle>
+                        <CardDescription className="text-blue-700">{description}</CardDescription>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <Button 
+                    asChild 
+                    variant={variant} 
+                    className={`w-full ${
+                        variant === 'default' 
+                            ? 'bg-blue-600 hover:bg-blue-700' 
+                            : 'border-blue-300 text-blue-700 hover:bg-blue-50'
+                    }`}
+                >
+                    <Link href={href}>
+                        {buttonText}
+                    </Link>
+                </Button>
+            </CardContent>
+        </Card>
     );
 }

@@ -1,73 +1,115 @@
 import { Metadata } from 'next';
-import { notFound, redirect } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import prisma from '@/lib/prisma';
 import { getCurrentUserSession } from '@/lib/auth';
 import { Role, Department } from '@prisma/client';
-import { CreateDepartmentForm } from '@/components/forms/CreateDepartmentForm'; // We'll create this
-import { DepartmentsTable } from '@/components/tables/DepartmentsTable'; // We'll create this
+import { CreateDepartmentForm } from '@/components/forms/CreateDepartmentForm';
+import { DepartmentsTable } from '@/components/tables/DepartmentsTable';
 import { Building2 } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
-// Define props type including URL parameters
 type CoordinatorDepartmentsPageProps = {
   params: {
     centerId: string;
   };
 };
 
-// Generate dynamic metadata
 export async function generateMetadata({ params }: CoordinatorDepartmentsPageProps): Promise<Metadata> {
-  const center = await prisma.center.findUnique({ where: { id: params.centerId }, select: { name: true } });
+  const center = await prisma.center.findUnique({ 
+    where: { id: params.centerId }, 
+    select: { name: true } 
+  });
+  
   return {
-    title: center ? `Departments: ${center.name}` : 'Center Departments',
-    description: `Manage departments for center ${center?.name || params.centerId}.`,
+    title: center ? `Departments - ${center.name}` : 'Center Departments',
+    description: `Manage academic departments for ${center?.name || 'your center'}`,
   };
 }
 
-// Type for department data passed to table (include lecturer count)
 export type DepartmentWithLecturerCount = Department & {
-    _count: { lecturers: number };
+  _count: { lecturers: number };
 };
 
-// The Coordinator's Department Management Page component (Server Component)
-export default async function CoordinatorDepartmentsPage({ params }: CoordinatorDepartmentsPageProps) {
+export default async function CoordinatorDepartmentsPage({ 
+  params 
+}: CoordinatorDepartmentsPageProps) {
+  const session = await getCurrentUserSession();
   const { centerId } = params;
-  const session = getCurrentUserSession();
 
-  // --- Authorization Check ---
-  if (session?.role !== Role.COORDINATOR) redirect('/dashboard');
-  const center = await prisma.center.findUnique({ where: { id: centerId, coordinatorId: session.userId }, select: { id: true, name: true } });
-  if (!center) redirect('/dashboard');
+  // Authorization Check
+  if (!session || session.role !== Role.COORDINATOR) {
+    redirect('/dashboard');
+  }
 
-  // Fetch departments for this center, including a count of assigned lecturers
-  const departments: DepartmentWithLecturerCount[] = await prisma.department.findMany({
-    where: { centerId: centerId },
+  const center = await prisma.center.findUnique({ 
+    where: { 
+      id: centerId, 
+      coordinatorId: session.userId 
+    }, 
+    select: { 
+      id: true, 
+      name: true 
+    } 
+  });
+  
+  if (!center) {
+    redirect('/dashboard');
+  }
+
+  const departments = await prisma.department.findMany({
+    where: { centerId },
     include: {
-        _count: { select: { lecturers: true } } // Count lecturers in each department
+      _count: { select: { lecturers: true } }
     },
     orderBy: { name: 'asc' },
   });
 
-  console.log(`CoordinatorDepartmentsPage: Displaying ${departments.length} departments for center ${center.name}`);
-
   return (
     <div className="space-y-6">
-      {/* Section to Create New Department */}
-      <div>
-        <h2 className="text-2xl font-semibold mb-4 flex items-center">
-          <Building2 className="mr-3 h-6 w-6" /> Create New Department
-        </h2>
-        <CreateDepartmentForm centerId={center.id} />
+      {/* Page Header */}
+      <div className="space-y-2">
+        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+          Department Management
+        </h1>
+        <p className="text-sm text-muted-foreground md:text-base">
+          Manage academic departments for <span className="font-medium">{center.name}</span>
+        </p>
       </div>
 
-      {/* Section to View/Manage Existing Departments */}
-      <div>
-        <h2 className="text-2xl font-semibold mt-8 mb-4">
-          Existing Departments ({departments.length})
-        </h2>
-        <DepartmentsTable
-            centerId={center.id}
-            departments={departments}
-        />
+      {/* Create Department Card */}
+      <Card className="border-none shadow-sm">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-primary" />
+            <CardTitle className="text-lg font-semibold">
+              Create New Department
+            </CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <CreateDepartmentForm centerId={center.id} />
+        </CardContent>
+      </Card>
+
+      {/* Existing Departments Section */}
+      <div className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold tracking-tight">
+            Existing Departments
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {departments.length} department{departments.length !== 1 ? 's' : ''} in this center
+          </p>
+        </div>
+
+        <Card>
+          <CardContent className="p-0">
+            <DepartmentsTable
+              centerId={center.id}
+              departments={departments}
+            />
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

@@ -30,7 +30,6 @@ type CoordinatorClaimsPageProps = {
 };
 
 // Define the type for claim data passed to the ClaimsTable component.
-// Includes selected fields from the base Claim model and the submitting User.
 export type ClaimForCoordinatorView = Pick<Claim,
     'id' |
     'claimType' |
@@ -89,42 +88,48 @@ export default async function CoordinatorClaimsPage({ params, searchParams }: Co
     console.log(`[Server Page] Current Search Query: "${searchQuery}"`);
 
     // --- Data Fetching ---
+    // Construct the base where clause, always filtering by centerId
     const whereClause: Prisma.ClaimWhereInput = {
         centerId: centerId,
-        // Apply search filter if query exists
-        ...(searchQuery && {
-            OR: [
-                // *** FIXED: Removed `mode: 'insensitive'` ***
-                { id: { contains: searchQuery } },
-                { submittedBy: { name: { contains: searchQuery } } },
-                { submittedBy: { email: { contains: searchQuery } } },
-                // Attempt enum search (convert query to potential enum value)
-                { claimType: { equals: Object.values(ClaimType).find(val => val.toLowerCase() === searchQuery.toLowerCase()) } },
-                { transportDestinationTo: { contains: searchQuery } },
-                { transportDestinationFrom: { contains: searchQuery } },
-                { thesisExamCourseCode: { contains: searchQuery } },
-                // Add search by status if needed (convert query to enum)
-                { status: { equals: Object.values(ClaimStatus).find(val => val.toLowerCase() === searchQuery.toLowerCase()) } },
-            ].filter(condition => // Filter out conditions where enum conversion resulted in undefined
-                 (condition.claimType && condition.claimType.equals !== undefined) ||
-                 (condition.status && condition.status.equals !== undefined) ||
-                 (condition.id || condition.submittedBy || condition.transportDestinationTo || condition.transportDestinationFrom || condition.thesisExamCourseCode) // Keep non-enum conditions
-            )
-        }),
     };
 
-    // Ensure the OR array is not empty after filtering, otherwise Prisma might error
-    if (whereClause.OR && whereClause.OR.length === 0) {
-        // If the search query didn't match any valid enum and no other fields were searched,
-        // it means no results are possible. We can set OR to an impossible condition.
-        whereClause.OR = [{ id: { equals: 'impossible_id_to_prevent_error' } }];
+    // Conditionally add the OR clause for search
+    if (searchQuery) {
+        const orConditions = [
+            // Case-insensitive search on relevant fields
+            { id: { contains: searchQuery } }, // Removed mode: 'insensitive'
+            { submittedBy: { name: { contains: searchQuery } } },
+            { submittedBy: { email: { contains: searchQuery } } },
+            // Attempt enum search (convert query to potential enum value)
+            { claimType: { equals: Object.values(ClaimType).find(val => val.toLowerCase() === searchQuery.toLowerCase()) } },
+            { transportDestinationTo: { contains: searchQuery } },
+            { transportDestinationFrom: { contains: searchQuery } },
+            { thesisExamCourseCode: { contains: searchQuery } },
+            { status: { equals: Object.values(ClaimStatus).find(val => val.toLowerCase() === searchQuery.toLowerCase()) } },
+        ].filter(condition => // Filter out conditions where enum conversion resulted in undefined
+             (condition.claimType && condition.claimType.equals !== undefined) ||
+             (condition.status && condition.status.equals !== undefined) ||
+             (condition.id || condition.submittedBy || condition.transportDestinationTo || condition.transportDestinationFrom || condition.thesisExamCourseCode)
+        );
+
+        // Only add OR clause if there are valid conditions to search for
+        if (orConditions.length > 0) {
+            whereClause.OR = orConditions;
+        } else {
+             // If search query exists but results in no valid OR conditions (e.g., searching for non-existent enum),
+             // force no results by adding an impossible condition within the main 'where'.
+             // This ensures the centerId filter is still respected.
+             whereClause.id = { equals: 'impossible_id_to_prevent_error' };
+        }
     }
 
+    // *** ADDED LOG: Log the final whereClause being used ***
+    console.log("[Server Page] Using whereClause:", JSON.stringify(whereClause, null, 2));
 
     let claims: ClaimForCoordinatorView[] = [];
     try {
         claims = await prisma.claim.findMany({
-            where: whereClause, // Use the constructed where clause including search logic
+            where: whereClause, // Use the constructed where clause
             select: { // Select only the fields needed for the table display and actions
                 id: true,
                 claimType: true,
@@ -153,52 +158,57 @@ export default async function CoordinatorClaimsPage({ params, searchParams }: Co
     } catch (error) {
         console.error("CoordinatorClaimsPage: Error fetching claims:", error);
         // Handle error display appropriately
-        // For now, claims array will be empty, triggering the "No claims found" message.
     }
 
     return (
-        <div className="space-y-6">
-            {/* Page Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-800 flex items-center">
-                        <FileText className="mr-3 h-7 w-7 text-primary" />
-                        Claims for Review
-                    </h1>
-                    <p className="text-lg text-muted-foreground mt-1">
-                        Center: <span className="font-semibold">{center.name}</span>
-                    </p>
+        <div className="space-y-6 p-6 bg-gradient-to-br from-blue-50 via-white to-red-50 min-h-screen">
+            {/* Page Header with Gradient Background */}
+            <div className="bg-gradient-to-r from-blue-600 to-red-500 p-6 rounded-xl shadow-lg text-white">
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                    <div>
+                        <h1 className="text-3xl font-bold flex items-center">
+                            <FileText className="mr-3 h-7 w-7" />
+                            Claims for Review
+                        </h1>
+                        <p className="text-lg text-blue-100 mt-1">
+                            Center: <span className="font-semibold">{center.name}</span>
+                        </p>
+                    </div>
                 </div>
-                 {/* Add other header elements if needed */}
             </div>
 
-             {/* === Search Input Component Inserted Here === */}
-            <div className="flex justify-start pt-2 pb-4"> {/* Add some padding */}
-                 <ClaimSearchInput initialQuery={searchQuery} />
+            {/* Search Input with Gradient Border */}
+            <div className="flex justify-start pt-2 pb-4">
+                <div className="w-full max-w-md bg-white rounded-lg shadow-sm border border-blue-200/50 p-1 bg-gradient-to-r from-white to-red-50">
+                    <ClaimSearchInput initialQuery={searchQuery} />
+                </div>
             </div>
 
             {/* Claims Data Display */}
-            {/* Pass the fetched (and potentially searched) claims to your data table component */}
             {claims.length > 0 ? (
-                 // Ensure ClaimsTable component exists and accepts these props
-                 <ClaimsTable
-                    centerId={center.coordinatorId}
-                    claims={claims}
-                    currentUserId={session.userId}
-                 />
+                <div className="rounded-xl border border-blue-200/50 bg-white shadow-sm overflow-hidden">
+                    {/* Ensure ClaimsTable component exists and accepts these props */}
+                    <ClaimsTable
+                        centerId={centerId} // Pass the correct centerId from params
+                        claims={claims}
+                        currentUserId={session.userId}
+                        userRole={session.role}
+                    />
+                </div>
             ) : (
-                // Display message when no claims match the search/filter
-                <Card className="mt-4 border-dashed">
+                <Card className="mt-4 border-dashed border-blue-300 bg-gradient-to-br from-white to-red-50">
                     <CardContent className="pt-6">
-                        <div className="text-center text-muted-foreground">
-                            <Search className="mx-auto h-12 w-12 mb-4 opacity-50" /> {/* Use Search icon */}
+                        <div className="text-center text-blue-800/70">
+                            <Search className="mx-auto h-12 w-12 mb-4 text-blue-500/50" />
                             <p className="font-medium">
                                 {searchQuery ? `No claims found matching "${searchQuery}".` : "No claims found for this center."}
                             </p>
-                            {/* Optionally, add a button to clear the search if needed */}
                             {searchQuery && (
-                                <Button variant="link" asChild className="mt-2 text-primary">
-                                     {/* Link to clear the search query */}
+                                <Button
+                                    variant="link"
+                                    asChild
+                                    className="mt-2 bg-gradient-to-r from-blue-600 to-red-500 bg-clip-text text-transparent"
+                                >
                                     <Link href={`/coordinator/${centerId}/claims`}>Clear Search</Link>
                                 </Button>
                             )}

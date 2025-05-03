@@ -4,78 +4,118 @@ import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { Loader2 } from "lucide-react";
+import { Loader2, PlusCircle } from "lucide-react";
 import { useRouter } from 'next/navigation';
 
 import { Button } from "@/components/ui/button";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { 
+  Form, 
+  FormControl, 
+  FormField, 
+  FormItem, 
+  FormLabel, 
+  FormMessage 
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-
-// Import the server action
 import { createDepartment } from "@/lib/actions/coordinator.actions";
 
-// Validation schema
 const formSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters.").max(100),
+  name: z.string()
+    .min(2, "Department name must be at least 2 characters")
+    .max(50, "Department name cannot exceed 50 characters")
+    .regex(/^[a-zA-Z0-9\s\-&]+$/, "Only letters, numbers, spaces, hyphens, and ampersands are allowed"),
 });
 
-type CreateDepartmentFormValues = z.infer<typeof formSchema>;
+type FormValues = z.infer<typeof formSchema>;
 
 interface CreateDepartmentFormProps {
-    centerId: string;
+  centerId: string;
+  className?: string;
 }
 
-export function CreateDepartmentForm({ centerId }: CreateDepartmentFormProps) {
+export function CreateDepartmentForm({ 
+  centerId,
+  className = ""
+}: CreateDepartmentFormProps) {
   const router = useRouter();
-  const [isLoading, setIsLoading] = React.useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const form = useForm<CreateDepartmentFormValues>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: { name: "" },
+    mode: "onChange"
   });
 
-  async function onSubmit(values: CreateDepartmentFormValues) {
-    setIsLoading(true);
-    console.log("Submitting new department:", values.name, "for center:", centerId);
-
+  const onSubmit = async (values: FormValues) => {
+    setIsSubmitting(true);
+    
     try {
-      const result = await createDepartment({ ...values, centerId }); // Pass centerId along
-      if (result.success) {
-        toast.success(result.message || "Department created!");
-        form.reset(); // Clear the form
-        router.refresh(); // Refresh page data
+      const result = await createDepartment({ 
+        name: values.name.trim(),
+        centerId 
+      });
+
+      if (result?.success) {
+        toast.success("Department created successfully");
+        form.reset();
+        router.refresh();
       } else {
-        toast.error(result.message || "Failed to create department.");
+        toast.error(result?.message || "Failed to create department");
       }
     } catch (error) {
-      console.error("Create department form error:", error);
-      toast.error("An unexpected error occurred.");
+      console.error("Department creation error:", error);
+      toast.error("An unexpected error occurred");
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
-  }
+  };
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="flex items-end gap-4 border p-4 rounded-md bg-muted/30">
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem className="flex-grow">
-              <FormLabel className="sr-only">Department Name</FormLabel> {/* Hide label visually */}
-              <FormControl>
-                <Input placeholder="Enter new department name..." {...field} disabled={isLoading} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <Button type="submit" disabled={isLoading}>
-          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create"}
-        </Button>
-      </form>
-    </Form>
+    <div className={`w-full ${className}`}>
+      <Form {...form}>
+        <form 
+          onSubmit={form.handleSubmit(onSubmit)} 
+          className="space-y-4"
+        >
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="sr-only">Department Name</FormLabel>
+                <div className="flex items-start gap-2">
+                  <FormControl>
+                    <Input
+                      placeholder="e.g. Computer Science"
+                      className="h-10 text-base"
+                      autoComplete="off"
+                      disabled={isSubmitting}
+                      {...field}
+                    />
+                  </FormControl>
+                  <Button 
+                    type="submit" 
+                    size="sm"
+                    className="h-10 gap-1.5 px-4"
+                    disabled={isSubmitting || !form.formState.isValid}
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <PlusCircle className="h-4 w-4" />
+                        <span>Add</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <FormMessage className="text-xs" />
+              </FormItem>
+            )}
+          />
+        </form>
+      </Form>
+    </div>
   );
 }

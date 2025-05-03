@@ -1,131 +1,140 @@
-import { Metadata } from 'next'; // For setting page metadata
-import { notFound, redirect } from 'next/navigation'; // For handling errors and redirects
-import prisma from '@/lib/prisma'; // Prisma client for database access
-import { getCurrentUserSession } from '@/lib/auth'; // Helper to get user session
-import { Role, User, Department } from '@prisma/client'; // Prisma types
-import { AssignedLecturersTable } from '@/components/tables/AssignedLecturersTable'; // Table to display lecturers
-import { CreateLecturerForm } from '@/components/forms/CreateLecturerForm'; // Form to create new lecturers
-import { Users, UserPlus } from 'lucide-react'; // Icons
+import { Metadata } from 'next';
+import { notFound, redirect } from 'next/navigation';
+import prisma from '@/lib/prisma';
+import { getCurrentUserSession } from '@/lib/auth';
+import { Role, User, Department } from '@prisma/client';
+import { AssignedLecturersTable } from '@/components/tables/AssignedLecturersTable';
+import { CreateLecturerForm } from '@/components/forms/CreateLecturerForm';
+import { Users, UserPlus } from 'lucide-react';
 
-// Define the structure for props passed to the page component, including URL parameters
 type CoordinatorLecturersPageProps = {
   params: {
-    centerId: string; // The dynamic center ID from the URL
+    centerId: string;
   };
 };
 
-// Function to generate dynamic metadata for the page (e.g., browser tab title)
 export async function generateMetadata({ params }: CoordinatorLecturersPageProps): Promise<Metadata> {
-  // Fetch the center name to include in the title
   const center = await prisma.center.findUnique({
     where: { id: params.centerId },
     select: { name: true },
   });
   return {
-    title: center ? `Lecturers: ${center.name}` : 'Center Lecturers', // Dynamic title
-    description: `View and create lecturers assigned to center ${center?.name || params.centerId}.`, // Dynamic description
+    title: center ? `Lecturers - ${center.name}` : 'Center Lecturers',
+    description: `Manage lecturers assigned to ${center?.name || 'your center'}`,
   };
 }
 
-// Define the type for lecturer data passed to the AssignedLecturersTable component
-// Includes optional department details for display.
 export type AssignedLecturer = Pick<User, 'id' | 'name' | 'email'> & {
-    department?: { id: string; name: string } | null; // Include optional department info
+    department?: { id: string; name: string } | null;
 };
 
-// The main Server Component for the Coordinator's Lecturer Management Page
 export default async function CoordinatorLecturersPage({ params }: CoordinatorLecturersPageProps) {
-  const { centerId } = params; // Extract centerId from the URL parameters
-  const session = getCurrentUserSession(); // Get the current user's session details
+  const { centerId } = params;
+  const session = await getCurrentUserSession();
 
-  // --- Authorization Check ---
-  // 1. Verify the user has the COORDINATOR role.
+  // Authorization
   if (session?.role !== Role.COORDINATOR) {
     console.warn(`CoordinatorLecturersPage: Non-coordinator user (Role: ${session?.role}) attempting access.`);
-    redirect('/dashboard'); // Redirect unauthorized roles
+    redirect('/dashboard');
   }
 
-  // 2. Verify this coordinator is assigned to THIS specific center.
-  // Fetch the center ensuring it exists and the coordinatorId matches the logged-in user.
   const center = await prisma.center.findUnique({
     where: {
       id: centerId,
-      coordinatorId: session.userId, // Crucial check for ownership/assignment
+      coordinatorId: session.userId,
     },
-    select: { id: true, name: true } // Select needed fields (ID for forms, name for display)
+    select: { id: true, name: true }
   });
 
-  // If the center is not found OR the coordinator doesn't match, deny access.
   if (!center) {
-     console.warn(`CoordinatorLecturersPage: Coordinator ${session.userId} failed access check for center ${centerId}.`);
-     // Redirect to a safe page, like their dashboard or an error page.
-     redirect('/dashboard');
+    console.warn(`CoordinatorLecturersPage: Coordinator ${session.userId} failed access check for center ${centerId}.`);
+    redirect('/dashboard');
   }
 
-  // --- Data Fetching ---
-  // Fetch the list of lecturers currently assigned to this specific center.
-  // Include their assigned department details.
-  const assignedLecturers: AssignedLecturer[] = await prisma.user.findMany({
-    where: {
-      role: Role.LECTURER, // Ensure only users with the Lecturer role are fetched
-      lecturerCenterId: centerId, // Filter by this center's ID
-    },
-    select: { // Select only the necessary fields for the table and form
+  // Data Fetching
+  const [assignedLecturers, departments] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        role: Role.LECTURER,
+        lecturerCenterId: centerId,
+      },
+      select: {
         id: true,
         name: true,
         email: true,
-        department: { select: { id: true, name: true } } // Include assigned department name
-    },
-    orderBy: {
-      name: 'asc', // Sort the list alphabetically by name for consistency
-    },
-  });
-
-  // Fetch the list of departments belonging to this center
-  // Needed to populate the dropdown in the CreateLecturerForm.
-  const departments: Pick<Department, 'id' | 'name'>[] = await prisma.department.findMany({
-      where: { centerId: centerId }, // Filter by this center's ID
-      select: { id: true, name: true }, // Select only ID and name for the dropdown
-      orderBy: { name: 'asc' }, // Sort alphabetically
-  });
+        department: { select: { id: true, name: true } }
+      },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.department.findMany({
+      where: { centerId: centerId },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    })
+  ]);
 
   console.log(`CoordinatorLecturersPage: Displaying ${assignedLecturers.length} lecturers, ${departments.length} departments for center ${center.name}`);
 
-  // --- Render Page ---
   return (
-    // Use space-y utility for vertical spacing between sections
     <div className="space-y-8">
-
-      {/* Section to Create New Lecturer */}
-      <div>
-        <h2 className="text-2xl font-semibold mb-4 flex items-center">
-            <UserPlus className="mr-3 h-6 w-6 text-primary" /> {/* Icon and Title */}
-            Create New Lecturer
-        </h2>
-         {/* Render the form, passing the centerId and the list of departments */}
-         <CreateLecturerForm centerId={center.id} departments={departments} />
-      </div>
-
-
-      {/* Section to View Assigned Lecturers */}
-      <div>
-        {/* Title displaying the count of assigned lecturers */}
-        <h2 className="text-2xl font-semibold mt-6 mb-3 flex items-center">
-             <Users className="mr-3 h-6 w-6 text-primary" /> {/* Icon and Title */}
-             Assigned Lecturers ({assignedLecturers.length})
-        </h2>
-        <p className="text-muted-foreground mb-4">
-            The following lecturers are currently assigned to <strong>{center.name}</strong>.
-            You can assign them to specific departments using the 'Departments' section.
+      {/* Page Header */}
+      <div className="flex flex-col gap-2">
+        <h1 className="text-3xl font-bold tracking-tight">
+          Lecturer Management
+        </h1>
+        <p className="text-muted-foreground">
+          Manage lecturers for <span className="font-medium text-primary">{center.name}</span>
         </p>
-        {/* Render the table component */}
-        <AssignedLecturersTable
-            centerId={center.id} // Pass centerId (needed internally by table actions if they were shown)
-            assignedLecturers={assignedLecturers} // Pass the fetched lecturer data
-            showActions={false} // Explicitly hide actions (like remove) for the Coordinator view
-        />
       </div>
 
+      {/* Create Lecturer Card */}
+      <div className="rounded-lg border bg-card shadow-sm">
+        <div className="flex flex-col p-6 space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-50 border border-blue-100">
+              <UserPlus className="h-5 w-5 text-blue-600" />
+            </div>
+            <h2 className="text-xl font-semibold">
+              Add New Lecturer
+            </h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Register a new lecturer to assign to this center
+          </p>
+        </div>
+        <div className="p-6 pt-0">
+          <CreateLecturerForm centerId={center.id} departments={departments} />
+        </div>
+      </div>
+
+      {/* Lecturers List Card */}
+      <div className="rounded-lg border bg-card shadow-sm">
+        <div className="flex flex-col p-6 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-50 border border-blue-100">
+                <Users className="h-5 w-5 text-blue-600" />
+              </div>
+              <h2 className="text-xl font-semibold">
+                Assigned Lecturers
+              </h2>
+            </div>
+            <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-sm font-medium">
+              {assignedLecturers.length} lecturer{assignedLecturers.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Lecturers currently assigned to this center
+          </p>
+        </div>
+        <div className="p-6 pt-0">
+          <AssignedLecturersTable
+            centerId={center.id}
+            assignedLecturers={assignedLecturers}
+            showActions={false}
+          />
+        </div>
+      </div>
     </div>
   );
 }
