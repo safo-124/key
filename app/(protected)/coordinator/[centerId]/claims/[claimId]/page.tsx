@@ -14,6 +14,7 @@ import { ArrowLeft } from 'lucide-react';
 import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust if path changed
 
 // Define props type including URL parameters
+// This type is correct for the Page component itself
 type ViewClaimPageProps = {
     params: {
         centerId: string; // Center ID from the URL
@@ -32,8 +33,10 @@ export type ClaimWithDetailsForView = Claim & {
 
 
 // Function to generate dynamic metadata for the page
-// *** FIXED: Added async keyword ***
-export async function generateMetadata({ params }: ViewClaimPageProps): Promise<Metadata> {
+// *** FIXED: Explicitly type the props parameter for generateMetadata ***
+export async function generateMetadata(
+    { params }: { params: { centerId: string; claimId: string } } // Use explicit type here
+): Promise<Metadata> {
     const session = getCurrentUserSession();
     // Fetch minimal data for title, checking access implicitly
     // Basic check: Ensure user is likely a coordinator before fetching
@@ -44,8 +47,8 @@ export async function generateMetadata({ params }: ViewClaimPageProps): Promise<
     try {
         const claim = await prisma.claim.findFirst({
             where: {
-                id: params.claimId,
-                centerId: params.centerId,
+                id: params.claimId, // Now correctly typed
+                centerId: params.centerId, // Now correctly typed
                 // Ensure the center is coordinated by the current user (basic check)
                 center: {
                     coordinatorId: session.userId // Check against session userId directly
@@ -70,6 +73,7 @@ export async function generateMetadata({ params }: ViewClaimPageProps): Promise<
 
 
 // The View Claim Details Page component for Coordinators (Server Component)
+// The ViewClaimPageProps type is correctly used here
 export default async function ViewClaimPage({ params }: ViewClaimPageProps) {
     const { centerId, claimId } = params; // Extract IDs from URL
     const session = getCurrentUserSession(); // Get current user session
@@ -118,9 +122,7 @@ export default async function ViewClaimPage({ params }: ViewClaimPageProps) {
          console.warn(`[ViewClaimPage] Claim ${claimId} not found. Triggering notFound().`);
          notFound();
     } else if (claim.centerId !== centerId) {
-         // This is the validation failing according to your logs
          console.warn(`[ViewClaimPage] Claim's centerId (${claim.centerId}) does not match URL centerId (${centerId}). Triggering notFound(). Access denied.`);
-         // IMPORTANT: Fix the link that led to this page. The URL has the wrong centerId for this claimId.
          notFound();
     } else if (claim.center?.coordinatorId !== session.userId) {
          console.warn(`[ViewClaimPage] Claim's center coordinatorId (${claim.center?.coordinatorId}) does not match session userId (${session.userId}). Triggering notFound(). Access denied.`);
