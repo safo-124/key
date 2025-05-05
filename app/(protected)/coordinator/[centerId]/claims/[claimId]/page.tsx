@@ -1,3 +1,5 @@
+// app/(protected)/coordinator/[centerId]/claims/[claimId]/page.tsx
+
 import { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
@@ -8,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView';
 
-// Define params type
 interface CoordinatorClaimPageParams {
     centerId: string;
     claimId: string;
@@ -24,23 +25,33 @@ export type ClaimWithDetailsForView = Claim & {
 export async function generateMetadata(
     { params }: { params: CoordinatorClaimPageParams }
 ): Promise<Metadata> {
-    const session = getCurrentUserSession();
+    const session = await getCurrentUserSession(); // ✅ await here
+
     if (session?.role !== Role.COORDINATOR) {
         return { title: "Access Denied" };
     }
+
     try {
         const claim = await prisma.claim.findFirst({
             where: {
                 id: params.claimId,
                 centerId: params.centerId,
-                center: { coordinatorId: session.userId }
+                center: {
+                    coordinatorId: session.userId,
+                },
             },
-            select: { claimType: true, center: { select: { name: true } } },
+            select: {
+                claimType: true,
+                center: { select: { name: true } },
+            },
         });
 
-        const claimTypeString = claim?.claimType ? ` (${claim.claimType.replace('_', ' ')})` : '';
+        const claimTypeString = claim?.claimType
+            ? ` (${claim.claimType.replace('_', ' ')})`
+            : '';
+
         return {
-            title: claim ? `Review Claim ${claimTypeString}` : 'Review Claim',
+            title: claim ? `Review Claim${claimTypeString}` : 'Review Claim',
             description: `Review details for claim ${params.claimId} in center ${claim?.center?.name || params.centerId}.`,
         };
     } catch (error) {
@@ -54,22 +65,23 @@ export async function generateMetadata(
 
 export default async function ViewClaimPage({
     params,
-    searchParams,
 }: {
     params: CoordinatorClaimPageParams;
     searchParams?: Record<string, string | string[] | undefined>;
 }) {
     const { centerId, claimId } = params;
-    const session = getCurrentUserSession();
+    const session = await getCurrentUserSession(); // ✅ await here
 
     if (!session) {
         redirect('/login');
     }
+
     if (session.role !== Role.COORDINATOR) {
         redirect('/dashboard');
     }
 
     let claim: ClaimWithDetailsForView | null = null;
+
     try {
         claim = await prisma.claim.findUnique({
             where: { id: claimId },
@@ -78,13 +90,17 @@ export default async function ViewClaimPage({
                 processedBy: { select: { id: true, name: true, email: true } },
                 center: { select: { id: true, name: true, coordinatorId: true } },
                 supervisedStudents: true,
-            }
+            },
         });
     } catch (error) {
         console.error("[ViewClaimPage] Error fetching claim data:", error);
     }
 
-    if (!claim || claim.centerId !== centerId || claim.center?.coordinatorId !== session.userId) {
+    if (!claim) {
+        notFound();
+    } else if (claim.centerId !== centerId) {
+        notFound();
+    } else if (claim.center?.coordinatorId !== session.userId) {
         notFound();
     }
 
