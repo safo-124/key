@@ -9,9 +9,9 @@ import { Role, Claim, User, SupervisedStudent, Center } from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust path if needed
+import React, { JSX } from 'react'; // Import React for JSX type
 
 // Define the type for the detailed claim data needed by ClaimDetailsView
-// Keep this type as it's used internally and passed to the client component
 export type ClaimWithDetailsForView = Claim & {
     submittedBy: Pick<User, 'id' | 'name' | 'email'> | null;
     processedBy?: Pick<User, 'id' | 'name' | 'email'> | null;
@@ -21,12 +21,10 @@ export type ClaimWithDetailsForView = Claim & {
 
 
 // Function to generate dynamic metadata for the page
-// Keep the explicit inline typing for generateMetadata props
 export async function generateMetadata(
     { params }: { params: { centerId: string; claimId: string } }
 ): Promise<Metadata> {
-    // Use await if getCurrentUserSession is async
-    const session = await getCurrentUserSession(); // Added await based on user comment
+    const session = await getCurrentUserSession();
 
     if (session?.role !== Role.COORDINATOR) {
         return { title: "Access Denied" };
@@ -59,13 +57,12 @@ export async function generateMetadata(
 
 
 // The View Claim Details Page component for Coordinators (Server Component)
-// Using the simplest inline type for props
+// *** FIXED: Explicitly type the return value as Promise<JSX.Element> ***
 export default async function ViewClaimPage(
     { params }: { params: { centerId: string; claimId: string } }
-) {
+): Promise<JSX.Element> { // Added explicit return type
     const { centerId, claimId } = params;
-    // Use await if getCurrentUserSession is async
-    const session = await getCurrentUserSession(); // Added await based on user comment
+    const session = await getCurrentUserSession();
 
     // --- Authorization Check ---
     console.log("[ViewClaimPage] Session:", session);
@@ -126,7 +123,7 @@ export default async function ViewClaimPage(
             <ClaimDetailsView
                 claim={claim}
                 currentCoordinatorId={session.userId}
-              // Pass role if needed by ClaimDetailsView/Actions
+                 // Pass role if needed by ClaimDetailsView/Actions
             />
 
         </div>
