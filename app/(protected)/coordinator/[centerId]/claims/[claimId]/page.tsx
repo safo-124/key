@@ -1,4 +1,3 @@
-
 // app/(protected)/coordinator/[centerId]/claims/[claimId]/page.tsx
 
 import { Metadata } from 'next';
@@ -13,13 +12,8 @@ import { ArrowLeft } from 'lucide-react';
 import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust path if needed
 import React from 'react';
 
-// *** Define a PageProps interface with a generic index signature for params ***
-interface PageProps {
-    params: { [key: string]: string }; // Use generic index signature
-    searchParams?: { [key: string]: string | string[] | undefined };
-}
-
 // Define the type for the detailed claim data needed by ClaimDetailsView
+// Keep this type as it's used internally and passed to the client component
 export type ClaimWithDetailsForView = Claim & {
     submittedBy: Pick<User, 'id' | 'name' | 'email'> | null;
     processedBy?: Pick<User, 'id' | 'name' | 'email'> | null;
@@ -33,7 +27,7 @@ export type ClaimWithDetailsForView = Claim & {
 export async function generateMetadata(
     { params }: { params: { centerId: string; claimId: string } }
 ): Promise<Metadata> {
-    // Using synchronous getCurrentUserSession based on lib/auth.ts code
+    // *** Use synchronous getCurrentUserSession based on lib/auth.ts ***
     const session: UserSession | null = getCurrentUserSession();
 
     if (session?.role !== Role.COORDINATOR) {
@@ -67,15 +61,12 @@ export async function generateMetadata(
 
 
 // The View Claim Details Page component for Coordinators (Server Component)
-// *** Use the PageProps interface with the generic params type ***
+// *** Using the simplest inline type for props, removed explicit return type ***
 export default async function ViewClaimPage(
-    { params, searchParams }: PageProps // Use the defined interface
+    { params }: { params: { centerId: string; claimId: string } }
 ) {
-    // Access params using string keys - TypeScript knows they are strings
-    const centerId = params.centerId;
-    const claimId = params.claimId;
-
-    // Using synchronous getCurrentUserSession based on lib/auth.ts code
+    const { centerId, claimId } = params;
+    // *** Use synchronous getCurrentUserSession based on lib/auth.ts ***
     const session: UserSession | null = getCurrentUserSession();
 
     // --- Authorization Check ---
@@ -135,12 +126,10 @@ export default async function ViewClaimPage(
             {/* --- Render the Client Component --- */}
             <ClaimDetailsView
                 claim={claim}
-                currentCoordinatorId={session.userId}
-           
+               
+                currentCoordinatorId={session.role} // Pass role
             />
 
         </div>
     );
 }
-
-

@@ -4,6 +4,7 @@ import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Metadata } from 'next';
 import prisma from '@/lib/prisma';
+// Assuming UserSession is the correct type returned by getCurrentUserSession
 import { getCurrentUserSession, UserSession } from '@/lib/auth';
 import { Role, Department, User } from '@prisma/client';
 import { Button } from '@/components/ui/button';
@@ -11,14 +12,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ArrowLeft, Building2, Users, Terminal } from 'lucide-react';
+import React from 'react'; // Import React
 
-// Define props type including URL parameters
-type DepartmentDetailPageProps = {
+// *** Define a standard PageProps interface ***
+interface PageProps {
     params: {
-        centerId: string;     // Center ID from the URL
-        departmentId: string; // Department ID from the URL
+        centerId: string;
+        departmentId: string; // Add departmentId to params
     };
-};
+    searchParams?: { [key: string]: string | string[] | undefined };
+}
 
 // Define the type for the fetched data, including lecturers
 type DepartmentWithLecturers = Department & {
@@ -30,7 +33,11 @@ type DepartmentWithLecturers = Department & {
 };
 
 // Function to generate dynamic metadata
-export async function generateMetadata({ params }: DepartmentDetailPageProps): Promise<Metadata> {
+// Keep explicit inline typing for params here
+export async function generateMetadata(
+    { params }: { params: { centerId: string; departmentId: string } }
+): Promise<Metadata> {
+    // Use synchronous function based on lib/auth.ts
     const session = getCurrentUserSession();
     // Basic auth check for metadata
     if (session?.role !== Role.COORDINATOR) {
@@ -63,8 +70,12 @@ export async function generateMetadata({ params }: DepartmentDetailPageProps): P
 }
 
 // The main Department Detail Page component (Server Component)
-export default async function DepartmentDetailPage({ params }: DepartmentDetailPageProps) {
-    const { centerId, departmentId } = params;
+// *** Use the standard PageProps interface ***
+export default async function DepartmentDetailPage(
+    { params, searchParams }: PageProps // Use the defined PageProps interface
+) {
+    const { centerId, departmentId } = params; // Destructure params
+    // Use synchronous function based on lib/auth.ts
     const session = getCurrentUserSession();
 
     // --- Authorization Check ---
