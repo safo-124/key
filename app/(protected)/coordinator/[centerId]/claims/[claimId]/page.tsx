@@ -4,17 +4,14 @@ import { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import prisma from '@/lib/prisma';
-import { getCurrentUserSession } from '@/lib/auth';
+import { getCurrentUserSession } from '@/lib/auth'; // Assuming this might be async
 import { Role, Claim, User, SupervisedStudent, Center } from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
-import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView';
+import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust path if needed
 
-interface CoordinatorClaimPageParams {
-    centerId: string;
-    claimId: string;
-}
-
+// Define the type for the detailed claim data needed by ClaimDetailsView
+// Keep this type as it's used internally and passed to the client component
 export type ClaimWithDetailsForView = Claim & {
     submittedBy: Pick<User, 'id' | 'name' | 'email'> | null;
     processedBy?: Pick<User, 'id' | 'name' | 'email'> | null;
@@ -22,36 +19,33 @@ export type ClaimWithDetailsForView = Claim & {
     supervisedStudents?: SupervisedStudent[];
 };
 
+
+// Function to generate dynamic metadata for the page
+// Keep the explicit inline typing for generateMetadata props
 export async function generateMetadata(
-    { params }: { params: CoordinatorClaimPageParams }
+    { params }: { params: { centerId: string; claimId: string } }
 ): Promise<Metadata> {
-    const session = await getCurrentUserSession(); // ✅ await here
+    // Use await if getCurrentUserSession is async
+    const session = await getCurrentUserSession(); // Added await based on user comment
 
     if (session?.role !== Role.COORDINATOR) {
         return { title: "Access Denied" };
     }
-
     try {
         const claim = await prisma.claim.findFirst({
             where: {
                 id: params.claimId,
                 centerId: params.centerId,
                 center: {
-                    coordinatorId: session.userId,
-                },
+                    coordinatorId: session.userId
+                }
             },
-            select: {
-                claimType: true,
-                center: { select: { name: true } },
-            },
+            select: { claimType: true, center: { select: { name: true } } },
         });
 
-        const claimTypeString = claim?.claimType
-            ? ` (${claim.claimType.replace('_', ' ')})`
-            : '';
-
+        const claimTypeString = claim?.claimType ? ` (${claim.claimType.replace('_', ' ')})` : '';
         return {
-            title: claim ? `Review Claim${claimTypeString}` : 'Review Claim',
+            title: claim ? `Review Claim ${claimTypeString}` : 'Review Claim',
             description: `Review details for claim ${params.claimId} in center ${claim?.center?.name || params.centerId}.`,
         };
     } catch (error) {
@@ -63,26 +57,32 @@ export async function generateMetadata(
     }
 }
 
-export default async function ViewClaimPage({
-    params,
-}: {
-    params: CoordinatorClaimPageParams;
-    searchParams?: Record<string, string | string[] | undefined>;
-}) {
+
+// The View Claim Details Page component for Coordinators (Server Component)
+// Using the simplest inline type for props
+export default async function ViewClaimPage(
+    { params }: { params: { centerId: string; claimId: string } }
+) {
     const { centerId, claimId } = params;
-    const session = await getCurrentUserSession(); // ✅ await here
+    // Use await if getCurrentUserSession is async
+    const session = await getCurrentUserSession(); // Added await based on user comment
+
+    // --- Authorization Check ---
+    console.log("[ViewClaimPage] Session:", session);
+    console.log("[ViewClaimPage] Params:", params);
 
     if (!session) {
+        console.log("[ViewClaimPage] No session, redirecting to login.");
         redirect('/login');
     }
-
     if (session.role !== Role.COORDINATOR) {
+        console.warn(`[ViewClaimPage] Non-coordinator user (Role: ${session?.role}) attempting access. Redirecting.`);
         redirect('/dashboard');
     }
 
     let claim: ClaimWithDetailsForView | null = null;
-
     try {
+        console.log(`[ViewClaimPage] Fetching claim with ID: ${claimId}`);
         claim = await prisma.claim.findUnique({
             where: { id: claimId },
             include: {
@@ -90,32 +90,45 @@ export default async function ViewClaimPage({
                 processedBy: { select: { id: true, name: true, email: true } },
                 center: { select: { id: true, name: true, coordinatorId: true } },
                 supervisedStudents: true,
-            },
+            }
         });
+        console.log("[ViewClaimPage] Fetched Claim Data:", claim);
+
     } catch (error) {
-        console.error("[ViewClaimPage] Error fetching claim data:", error);
+         console.error("[ViewClaimPage] Error fetching claim data:", error);
     }
 
+    // --- Validation ---
     if (!claim) {
-        notFound();
+         console.warn(`[ViewClaimPage] Claim ${claimId} not found. Triggering notFound().`);
+         notFound();
     } else if (claim.centerId !== centerId) {
-        notFound();
+         console.warn(`[ViewClaimPage] Claim's centerId (${claim.centerId}) does not match URL centerId (${centerId}). Triggering notFound(). Access denied.`);
+         notFound();
     } else if (claim.center?.coordinatorId !== session.userId) {
-        notFound();
+         console.warn(`[ViewClaimPage] Claim's center coordinatorId (${claim.center?.coordinatorId}) does not match session userId (${session.userId}). Triggering notFound(). Access denied.`);
+         notFound();
     }
 
+    console.log(`[ViewClaimPage] Access validated. Displaying details for ${claim.claimType} claim ${claim.id} in center ${claim.center?.name}`);
+
+    // --- Render Page ---
     return (
         <div className="space-y-6">
+            {/* Back Button */}
             <Button variant="outline" size="sm" asChild>
                 <Link href={`/coordinator/${centerId}/claims`}>
                     <ArrowLeft className="mr-2 h-4 w-4" /> Back to Claims List
                 </Link>
             </Button>
 
+            {/* --- Render the Client Component --- */}
             <ClaimDetailsView
                 claim={claim}
                 currentCoordinatorId={session.userId}
+              // Pass role if needed by ClaimDetailsView/Actions
             />
+
         </div>
     );
 }
