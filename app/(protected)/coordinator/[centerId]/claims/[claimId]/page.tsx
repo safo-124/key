@@ -10,7 +10,17 @@ import { Role, Claim, User, SupervisedStudent, Center } from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust path if needed
-import React from 'react'; // Keep React import
+import React from 'react';
+
+// ** Define the standard Props type for a page component **
+// Includes params and optional searchParams
+interface PageProps {
+    params: {
+        centerId: string;
+        claimId: string;
+    };
+    searchParams?: { [key: string]: string | string[] | undefined };
+}
 
 // Define the type for the detailed claim data needed by ClaimDetailsView
 export type ClaimWithDetailsForView = Claim & {
@@ -26,8 +36,8 @@ export type ClaimWithDetailsForView = Claim & {
 export async function generateMetadata(
     { params }: { params: { centerId: string; claimId: string } }
 ): Promise<Metadata> {
-    // Use await if getCurrentUserSession is async
-    const session: UserSession | null = await getCurrentUserSession(); // Explicitly type session
+    // *** REMOVED await: getCurrentUserSession is synchronous ***
+    const session: UserSession | null = getCurrentUserSession();
 
     if (session?.role !== Role.COORDINATOR) {
         return { title: "Access Denied" };
@@ -43,6 +53,7 @@ export async function generateMetadata(
             },
             select: { claimType: true, center: { select: { name: true } } },
         });
+
         const claimTypeString = claim?.claimType ? ` (${claim.claimType.replace('_', ' ')})` : '';
         return {
             title: claim ? `Review Claim ${claimTypeString}` : 'Review Claim',
@@ -50,18 +61,24 @@ export async function generateMetadata(
         };
     } catch (error) {
         console.error("Error generating metadata:", error);
-        return { title: "Error Loading Claim", description: "Could not load claim details." };
+        return {
+            title: "Error Loading Claim",
+            description: "Could not load claim details.",
+        };
     }
 }
 
-// Page component - Use simplest inline props type, remove explicit return type
-export default async function ViewClaimPage(
-    { params }: { params: { centerId: string; claimId: string } }
-) { // Removed Promise<JSX.Element> return type
-    const { centerId, claimId } = params;
-    // Use await and explicitly type the session variable
-    const session: UserSession | null = await getCurrentUserSession();
 
+// The View Claim Details Page component for Coordinators (Server Component)
+// *** Use the standard PageProps interface ***
+export default async function ViewClaimPage(
+    { params, searchParams }: PageProps // Use the standard PageProps interface
+) {
+    const { centerId, claimId } = params;
+    // *** REMOVED await: getCurrentUserSession is synchronous ***
+    const session: UserSession | null = getCurrentUserSession();
+
+    // --- Authorization Check ---
     console.log("[ViewClaimPage] Session:", session);
     console.log("[ViewClaimPage] Params:", params);
 
@@ -91,7 +108,7 @@ export default async function ViewClaimPage(
          console.error("[ViewClaimPage] Error fetching claim data:", error);
     }
 
-    // Validation
+    // --- Validation ---
     if (!claim) {
          console.warn(`[ViewClaimPage] Claim ${claimId} not found. Triggering notFound().`);
          notFound();
@@ -105,18 +122,23 @@ export default async function ViewClaimPage(
 
     console.log(`[ViewClaimPage] Access validated. Displaying details for ${claim.claimType} claim ${claim.id} in center ${claim.center?.name}`);
 
+    // --- Render Page ---
     return (
         <div className="space-y-6">
+            {/* Back Button */}
             <Button variant="outline" size="sm" asChild>
                 <Link href={`/coordinator/${centerId}/claims`}>
                     <ArrowLeft className="mr-2 h-4 w-4" /> Back to Claims List
                 </Link>
             </Button>
+
+            {/* --- Render the Client Component --- */}
             <ClaimDetailsView
                 claim={claim}
-                currentCoordinatorId={session.userId}
-                
+                currentUserId={session.userId} // Renamed prop for clarity
+                userRole={session.role} // Pass role
             />
+
         </div>
     );
 }
