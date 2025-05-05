@@ -314,6 +314,7 @@ export function ClaimDetailsView({ claim, currentCoordinatorId }: { claim: Claim
                             claimId={claim.id}
                             centerId={claim.centerId}
                             coordinatorId={currentCoordinatorId}
+                            
                         />
                     </CardFooter>
                 )}

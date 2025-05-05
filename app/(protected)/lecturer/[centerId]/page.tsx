@@ -60,7 +60,7 @@ export default async function LecturerCenterPage({ params }: LecturerCenterPageP
         } else if (lecturerData.lecturerCenterId !== centerId) {
             redirect(`/lecturer/${lecturerData.lecturerCenterId}`);
         } else {
-            centerName = lecturerData.lecturerCenter?.name;
+            
 
             const claimCounts = await prisma.claim.groupBy({
                 by: ['status'],
