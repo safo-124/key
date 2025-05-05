@@ -13,13 +13,17 @@ import { ArrowLeft } from 'lucide-react';
 // Make sure the path is correct for your project structure
 import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust if path changed
 
+// *** Define a generic PageProps interface ***
+// This explicitly defines the structure Next.js often expects for page components
+interface PageProps<TParams = { [key: string]: string }, TSearchParams = { [key: string]: string | string[] | undefined }> {
+    params: TParams;
+    searchParams?: TSearchParams;
+}
 
-interface CoordinatorClaimPageProps {
-    params: {
-        centerId: string;
-        claimId: string;
-    };
-    searchParams?: { [key: string]: string | string[] | undefined }; // Optional searchParams
+// Define the specific params type for this page
+interface CoordinatorClaimPageParams {
+    centerId: string;
+    claimId: string;
 }
 
 // Define the type for the detailed claim data needed by ClaimDetailsView
@@ -70,9 +74,9 @@ export async function generateMetadata(
 
 
 // The View Claim Details Page component for Coordinators (Server Component)
-// *** FIXED: Use the explicit CoordinatorClaimPageProps interface ***
+// *** FIXED: Use the generic PageProps interface with specific params type ***
 export default async function ViewClaimPage(
-    { params, searchParams }: CoordinatorClaimPageProps // Use the defined interface
+    { params, searchParams }: PageProps<CoordinatorClaimPageParams> // Use the generic PageProps with specific params
 ) {
     // Destructure params directly
     const { centerId, claimId } = params;
