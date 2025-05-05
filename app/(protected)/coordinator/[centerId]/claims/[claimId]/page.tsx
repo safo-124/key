@@ -13,6 +13,15 @@ import { ArrowLeft } from 'lucide-react';
 // Make sure the path is correct for your project structure
 import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust if path changed
 
+
+interface CoordinatorClaimPageProps {
+    params: {
+        centerId: string;
+        claimId: string;
+    };
+    searchParams?: { [key: string]: string | string[] | undefined }; // Optional searchParams
+}
+
 // Define the type for the detailed claim data needed by ClaimDetailsView
 // Keep this type as it's used internally and passed to the client component
 export type ClaimWithDetailsForView = Claim & {
@@ -61,9 +70,9 @@ export async function generateMetadata(
 
 
 // The View Claim Details Page component for Coordinators (Server Component)
-// *** FIXED: Removed explicit props type, rely on inference ***
+// *** FIXED: Use the explicit CoordinatorClaimPageProps interface ***
 export default async function ViewClaimPage(
-    { params }: { params: { centerId: string; claimId: string } } // Use the simplest inline type for params
+    { params, searchParams }: CoordinatorClaimPageProps // Use the defined interface
 ) {
     // Destructure params directly
     const { centerId, claimId } = params;
@@ -72,6 +81,7 @@ export default async function ViewClaimPage(
     // --- Authorization Check ---
     console.log("[ViewClaimPage] Session:", session);
     console.log("[ViewClaimPage] Params:", params);
+    // console.log("[ViewClaimPage] SearchParams:", searchParams); // Log if needed
 
     // 1. Must be logged in
     if (!session) {
