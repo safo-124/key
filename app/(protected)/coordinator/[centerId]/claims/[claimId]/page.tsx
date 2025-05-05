@@ -13,8 +13,7 @@ import { ArrowLeft } from 'lucide-react';
 // Make sure the path is correct for your project structure
 import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust if path changed
 
-// Define props type including URL parameters
-// This type is correct for the Page component itself
+// Define props type including URL parameters - Keep this for reference or other uses
 type ViewClaimPageProps = {
     params: {
         centerId: string; // Center ID from the URL
@@ -33,7 +32,7 @@ export type ClaimWithDetailsForView = Claim & {
 
 
 // Function to generate dynamic metadata for the page
-// *** FIXED: Explicitly type the props parameter for generateMetadata ***
+// Correctly typing props inline
 export async function generateMetadata(
     { params }: { params: { centerId: string; claimId: string } } // Use explicit type here
 ): Promise<Metadata> {
@@ -73,8 +72,10 @@ export async function generateMetadata(
 
 
 // The View Claim Details Page component for Coordinators (Server Component)
-// The ViewClaimPageProps type is correctly used here
-export default async function ViewClaimPage({ params }: ViewClaimPageProps) {
+// *** FIXED: Explicitly type the props parameter for the Page component ***
+export default async function ViewClaimPage(
+    { params }: { params: { centerId: string; claimId: string } } // Use explicit type here
+) {
     const { centerId, claimId } = params; // Extract IDs from URL
     const session = getCurrentUserSession(); // Get current user session
 
