@@ -13,18 +13,8 @@ import { ArrowLeft } from 'lucide-react';
 // Make sure the path is correct for your project structure
 import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust if path changed
 
-
-// Include both params and optional searchParams
-type CoordinatorClaimDetailPageProps = {
-    params: {
-        centerId: string;
-        claimId: string;
-    };
-    searchParams?: { [key: string]: string | string[] | undefined }; // Standard searchParams type
-};
-
 // Define the type for the detailed claim data needed by ClaimDetailsView
-// Ensure this includes all relations and fields required by the client component
+// Keep this type as it's used internally and passed to the client component
 export type ClaimWithDetailsForView = Claim & {
     submittedBy: Pick<User, 'id' | 'name' | 'email'> | null; // Allow null in case user is deleted
     processedBy?: Pick<User, 'id' | 'name' | 'email'> | null; // Optional processor details
@@ -71,12 +61,12 @@ export async function generateMetadata(
 
 
 // The View Claim Details Page component for Coordinators (Server Component)
-// *** FIXED: Use the CoordinatorClaimDetailPageProps type defined above ***
+// *** FIXED: Removed explicit props type, rely on inference ***
 export default async function ViewClaimPage(
-    { params /*, searchParams */ }: CoordinatorClaimDetailPageProps // Use the defined Props type
+    { params }: { params: { centerId: string; claimId: string } } // Use the simplest inline type for params
 ) {
-    // We don't use searchParams here, but including it in the type might satisfy the build
-    const { centerId, claimId } = params; // Extract IDs from URL params
+    // Destructure params directly
+    const { centerId, claimId } = params;
     const session = getCurrentUserSession(); // Get current user session
 
     // --- Authorization Check ---

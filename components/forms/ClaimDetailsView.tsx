@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, Printer, CheckCircle, XCircle, Clock, User as UserIcon, Calendar, DollarSign, FileText, BookOpen, Car, GraduationCap, Hash, MapPin, Clock4 } from 'lucide-react';
-import { ClaimStatus, ClaimType, ThesisType, TransportType } from '@prisma/client';
+import { ClaimStatus, ClaimType, ThesisType } from '@prisma/client';
 import { ClaimActionButtonsClient } from '@/components/misc/ClaimActionButtonsClient';
 import type { ClaimWithDetailsForView } from '@/app/(protected)/coordinator/[centerId]/claims/[claimId]/page';
 
