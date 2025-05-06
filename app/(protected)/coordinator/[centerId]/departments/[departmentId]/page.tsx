@@ -14,14 +14,11 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ArrowLeft, Building2, Users, Terminal } from 'lucide-react';
 import React from 'react'; // Import React
 
-// *** Define a standard PageProps interface ***
-interface PageProps {
-    params: {
-        centerId: string;
-        departmentId: string; // Add departmentId to params
-    };
-    searchParams?: { [key: string]: string | string[] | undefined };
-}
+// *** Updated to use type definition instead of interface ***
+type PageParams = {
+    centerId: string;
+    departmentId: string;
+};
 
 // Define the type for the fetched data, including lecturers
 type DepartmentWithLecturers = Department & {
@@ -33,9 +30,8 @@ type DepartmentWithLecturers = Department & {
 };
 
 // Function to generate dynamic metadata
-// Keep explicit inline typing for params here
 export async function generateMetadata(
-    { params }: { params: { centerId: string; departmentId: string } }
+    { params }: { params: PageParams }
 ): Promise<Metadata> {
     // Use synchronous function based on lib/auth.ts
     const session = getCurrentUserSession();
@@ -70,10 +66,14 @@ export async function generateMetadata(
 }
 
 // The main Department Detail Page component (Server Component)
-// *** Use the standard PageProps interface ***
-export default async function DepartmentDetailPage(
-    { params, searchParams }: PageProps // Use the defined PageProps interface
-) {
+// *** Updated to use Next.js App Router expected parameter structure ***
+export default async function DepartmentDetailPage({
+    params,
+    searchParams,
+}: {
+    params: PageParams;
+    searchParams?: { [key: string]: string | string[] | undefined };
+}) {
     const { centerId, departmentId } = params; // Destructure params
     // Use synchronous function based on lib/auth.ts
     const session = getCurrentUserSession();
