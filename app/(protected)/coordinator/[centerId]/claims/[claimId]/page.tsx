@@ -66,7 +66,7 @@ export async function generateMetadata({ params }: PageParams): Promise<Metadata
 // View Claim Page
 // ------------------------
 export default async function ViewClaimPage({ params }: PageParams) {
-  const { centerId, claimId } = params;
+  const { centerId, claimId } = params; // ✅ This is enough
   const session: UserSession | null = getCurrentUserSession();
 
   if (!session) {
