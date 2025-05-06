@@ -54,22 +54,19 @@ export async function generateMetadata(
     }
 }
 
-// Let TypeScript ignore the type constraint error
-// @ts-expect-error - Next.js 15.3.1 expects params to be a Promise, but we're using it directly
-export default async function ViewClaimPage(props: {
-    params: { centerId: string; claimId: string };
-    searchParams?: { [key: string]: string | string[] | undefined };
-}) {
-    // Destructure props to avoid direct type issues
-    const params = props.params;
-    const { centerId, claimId } = params;
+// The View Claim Details Page component for Coordinators (Server Component)
+// @ts-expect-error - Next.js 15.3.1 type constraint issues
+export default async function ViewClaimPage(props: any) {
+    // Get the parameters through the props argument
+    const centerId = props.params.centerId;
+    const claimId = props.params.claimId;
     
     // Use synchronous getCurrentUserSession based on lib/auth.ts code
     const session: UserSession | null = getCurrentUserSession();
 
     // --- Authorization Check ---
     console.log("[ViewClaimPage] Session:", session);
-    console.log("[ViewClaimPage] Params:", params);
+    console.log("[ViewClaimPage] Params:", props.params);
 
     if (!session) {
         console.log("[ViewClaimPage] No session, redirecting to login.");
