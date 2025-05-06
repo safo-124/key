@@ -12,15 +12,11 @@ import { ArrowLeft } from 'lucide-react';
 import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust path if needed
 import React from 'react';
 
-// Define the standard Props type for a page component
-// Includes params and optional searchParams
-interface PageProps {
-    params: {
-        centerId: string;
-        claimId: string;
-    };
-    searchParams?: { [key: string]: string | string[] | undefined };
-}
+// Updated type definition to match Next.js App Router's expectation
+type PageParams = {
+    centerId: string;
+    claimId: string;
+};
 
 // Define the type for the detailed claim data needed by ClaimDetailsView
 // Keep this type as it's used internally and passed to the client component
@@ -35,7 +31,7 @@ export type ClaimWithDetailsForView = Claim & {
 // Function to generate dynamic metadata for the page
 // Keep the explicit inline typing for generateMetadata props
 export async function generateMetadata(
-    { params }: { params: { centerId: string; claimId: string } }
+    { params }: { params: PageParams }
 ): Promise<Metadata> {
     // Use synchronous getCurrentUserSession based on lib/auth.ts code
     const session: UserSession | null = getCurrentUserSession();
@@ -71,10 +67,14 @@ export async function generateMetadata(
 
 
 // The View Claim Details Page component for Coordinators (Server Component)
-// Use the standard PageProps interface
-export default async function ViewClaimPage(
-    { params, searchParams }: PageProps // Use the defined PageProps interface
-) {
+// Use the Next.js App Router expected parameter structure
+export default async function ViewClaimPage({
+    params,
+    searchParams,
+}: {
+    params: PageParams;
+    searchParams?: { [key: string]: string | string[] | undefined };
+}) {
     const { centerId, claimId } = params;
     // Use synchronous getCurrentUserSession based on lib/auth.ts code
     const session: UserSession | null = getCurrentUserSession();
@@ -141,7 +141,7 @@ export default async function ViewClaimPage(
             {/* Pass the inferred 'claim' object. Ensure ClaimDetailsView accepts the inferred type or use type assertion */}
             <ClaimDetailsView
                 claim={claim as ClaimWithDetailsForView} // Use type assertion if needed for ClaimDetailsView prop
-                currentCoordinatorId={session.role}
+                currentCoordinatorId={session.userId} // Fixed: Changed from session.role to session.userId
             />
 
         </div>
