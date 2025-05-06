@@ -1,5 +1,5 @@
 // app/(protected)/coordinator/[centerId]/claims/[claimId]/page.tsx
-
+//safo i gotta quit bro 
 import { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
