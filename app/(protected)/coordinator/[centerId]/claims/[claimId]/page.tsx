@@ -4,20 +4,12 @@ import { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import prisma from '@/lib/prisma';
-// Assuming UserSession is the correct type returned by getCurrentUserSession
 import { getCurrentUserSession, UserSession } from '@/lib/auth';
 import { Role, Claim, User, SupervisedStudent, Center } from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
-import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust path if needed
+import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView';
 import React from 'react';
-
-// Define the standard Props type for a page component
-// Use a non-Promise type for params since we'll await it properly
-interface PageProps {
-    params: { centerId: string; claimId: string };
-    searchParams?: { [key: string]: string | string[] | undefined };
-}
 
 // Define the type for the detailed claim data needed by ClaimDetailsView
 export type ClaimWithDetailsForView = Claim & {
@@ -31,7 +23,6 @@ export type ClaimWithDetailsForView = Claim & {
 export async function generateMetadata(
     { params }: { params: { centerId: string; claimId: string } }
 ): Promise<Metadata> {
-    // Use synchronous getCurrentUserSession based on lib/auth.ts code
     const session: UserSession | null = getCurrentUserSession();
 
     if (session?.role !== Role.COORDINATOR) {
@@ -64,8 +55,15 @@ export async function generateMetadata(
 }
 
 // The View Claim Details Page component for Coordinators (Server Component)
-export default async function ViewClaimPage({ params, searchParams }: PageProps) {
-    // Destructure directly from params (no need to await)
+// Using the Next.js-generated params type by omitting our custom interface
+export default async function ViewClaimPage({
+    params,
+    searchParams
+}: {
+    params: { centerId: string; claimId: string };
+    searchParams?: { [key: string]: string | string[] | undefined };
+}) {
+    // Get the parameters directly from the params object
     const { centerId, claimId } = params;
     
     // Use synchronous getCurrentUserSession based on lib/auth.ts code
@@ -129,7 +127,7 @@ export default async function ViewClaimPage({ params, searchParams }: PageProps)
             {/* --- Render the Client Component --- */}
             <ClaimDetailsView
                 claim={claim as ClaimWithDetailsForView}
-                currentCoordinatorId={session.userId} // Changed from session.role to session.userId
+                currentCoordinatorId={session.userId}
             />
         </div>
     );
