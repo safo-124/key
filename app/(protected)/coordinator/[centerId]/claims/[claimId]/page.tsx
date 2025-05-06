@@ -13,14 +13,13 @@ import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjus
 import React from 'react';
 
 // Define the standard Props type for a page component
-// Includes params and optional searchParams
+// Use a non-Promise type for params since we'll await it properly
 interface PageProps {
-    params: Promise<{ centerId: string; claimId: string }>;
+    params: { centerId: string; claimId: string };
     searchParams?: { [key: string]: string | string[] | undefined };
 }
 
 // Define the type for the detailed claim data needed by ClaimDetailsView
-// Keep this type as it's used internally and passed to the client component
 export type ClaimWithDetailsForView = Claim & {
     submittedBy: Pick<User, 'id' | 'name' | 'email'> | null;
     processedBy?: Pick<User, 'id' | 'name' | 'email'> | null;
@@ -28,9 +27,7 @@ export type ClaimWithDetailsForView = Claim & {
     supervisedStudents?: SupervisedStudent[];
 };
 
-
 // Function to generate dynamic metadata for the page
-// Keep the explicit inline typing for generateMetadata props
 export async function generateMetadata(
     { params }: { params: { centerId: string; claimId: string } }
 ): Promise<Metadata> {
@@ -66,17 +63,11 @@ export async function generateMetadata(
     }
 }
 
-
 // The View Claim Details Page component for Coordinators (Server Component)
-// Use the standard PageProps interface
-export default async function ViewClaimPage(
-    { params, searchParams }: PageProps // Use the defined PageProps interface
-) {
-     // Await params if it's a Promise
-    const resolvedParams = await params;
-   
-    
+export default async function ViewClaimPage({ params, searchParams }: PageProps) {
+    // Destructure directly from params (no need to await)
     const { centerId, claimId } = params;
+    
     // Use synchronous getCurrentUserSession based on lib/auth.ts code
     const session: UserSession | null = getCurrentUserSession();
 
@@ -93,7 +84,6 @@ export default async function ViewClaimPage(
         redirect('/dashboard');
     }
 
-    // *** REMOVED explicit type annotation for 'claim' variable ***
     let claim = null; // Initialize as null
     try {
         console.log(`[ViewClaimPage] Fetching claim with ID: ${claimId}`);
@@ -113,7 +103,6 @@ export default async function ViewClaimPage(
     }
 
     // --- Validation ---
-    // Type assertion might be needed here if inference isn't perfect, but let's try without first
     if (!claim) {
          console.warn(`[ViewClaimPage] Claim ${claimId} not found. Triggering notFound().`);
          notFound();
@@ -125,7 +114,6 @@ export default async function ViewClaimPage(
          notFound();
     }
 
-    // If validation passes, TypeScript should have inferred the type correctly by now
     console.log(`[ViewClaimPage] Access validated. Displaying details for ${claim.claimType} claim ${claim.id} in center ${claim.center?.name}`);
 
     // --- Render Page ---
@@ -139,12 +127,10 @@ export default async function ViewClaimPage(
             </Button>
 
             {/* --- Render the Client Component --- */}
-            {/* Pass the inferred 'claim' object. Ensure ClaimDetailsView accepts the inferred type or use type assertion */}
             <ClaimDetailsView
-                claim={claim as ClaimWithDetailsForView} // Use type assertion if needed for ClaimDetailsView prop
-                currentCoordinatorId={session.role}
+                claim={claim as ClaimWithDetailsForView}
+                currentCoordinatorId={session.userId} // Changed from session.role to session.userId
             />
-
         </div>
     );
 }
