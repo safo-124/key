@@ -10,7 +10,7 @@ import { Role, Claim, User, SupervisedStudent, Center } from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust path if needed
-import React from 'react'; // Import React
+import React from 'react';
 
 // Define the standard Props type for a page component
 // Includes params and optional searchParams
@@ -70,9 +70,12 @@ export async function generateMetadata(
 
 
 // The View Claim Details Page component for Coordinators (Server Component)
-// *** Define component using React.FC with PageProps ***
-const ViewClaimPage: React.FC<PageProps> = async ({ params, searchParams }) => {
+// *** Use type assertion 'as any' or 'as PageProps' as a workaround ***
+export default async function ViewClaimPage(props: any) { // Use 'any' temporarily
+    // Cast params inside the function if needed, or use props.params directly
+    const params = props.params as { centerId: string; claimId: string };
     const { centerId, claimId } = params;
+
     // Use synchronous getCurrentUserSession based on lib/auth.ts code
     const session: UserSession | null = getCurrentUserSession();
 
@@ -133,11 +136,9 @@ const ViewClaimPage: React.FC<PageProps> = async ({ params, searchParams }) => {
             {/* --- Render the Client Component --- */}
             <ClaimDetailsView
                 claim={claim}
-                currentCoordinatorId={session.role} // Pass role
+                currentCoordinatorId={session.role}
             />
 
         </div>
     );
-};
-
-export default ViewClaimPage; // Export the defined component
+}
