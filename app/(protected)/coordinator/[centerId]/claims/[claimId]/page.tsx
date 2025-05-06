@@ -15,10 +15,7 @@ import React from 'react';
 // Define the standard Props type for a page component
 // Includes params and optional searchParams
 interface PageProps {
-    params: {
-        centerId: string;
-        claimId: string;
-    };
+    params: Promise<{ centerId: string; claimId: string }>;
     searchParams?: { [key: string]: string | string[] | undefined };
 }
 
@@ -75,6 +72,10 @@ export async function generateMetadata(
 export default async function ViewClaimPage(
     { params, searchParams }: PageProps // Use the defined PageProps interface
 ) {
+     // Await params if it's a Promise
+    const resolvedParams = await params;
+    const { centerId, claimId } = resolvedParams;
+    
     const { centerId, claimId } = params;
     // Use synchronous getCurrentUserSession based on lib/auth.ts code
     const session: UserSession | null = getCurrentUserSession();
