@@ -10,16 +10,19 @@ import { Role, Claim, User, SupervisedStudent, Center } from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { ClaimDetailsView } from '@/components/forms/ClaimDetailsView'; // Adjust path if needed
-import React from 'react';
+import React from 'react'; // Import React
 
-// Updated type definition to match Next.js App Router's expectation
-type PageParams = {
-    centerId: string;
-    claimId: string;
-};
+// Define the standard Props type for a page component
+// Includes params and optional searchParams
+interface PageProps {
+    params: {
+        centerId: string;
+        claimId: string;
+    };
+    searchParams?: { [key: string]: string | string[] | undefined };
+}
 
 // Define the type for the detailed claim data needed by ClaimDetailsView
-// Keep this type as it's used internally and passed to the client component
 export type ClaimWithDetailsForView = Claim & {
     submittedBy: Pick<User, 'id' | 'name' | 'email'> | null;
     processedBy?: Pick<User, 'id' | 'name' | 'email'> | null;
@@ -31,7 +34,7 @@ export type ClaimWithDetailsForView = Claim & {
 // Function to generate dynamic metadata for the page
 // Keep the explicit inline typing for generateMetadata props
 export async function generateMetadata(
-    { params }: { params: PageParams }
+    { params }: { params: { centerId: string; claimId: string } }
 ): Promise<Metadata> {
     // Use synchronous getCurrentUserSession based on lib/auth.ts code
     const session: UserSession | null = getCurrentUserSession();
@@ -67,14 +70,8 @@ export async function generateMetadata(
 
 
 // The View Claim Details Page component for Coordinators (Server Component)
-// Use the Next.js App Router expected parameter structure
-export default async function ViewClaimPage({
-    params,
-    searchParams,
-}: {
-    params: PageParams;
-    searchParams?: { [key: string]: string | string[] | undefined };
-}) {
+// *** Define component using React.FC with PageProps ***
+const ViewClaimPage: React.FC<PageProps> = async ({ params, searchParams }) => {
     const { centerId, claimId } = params;
     // Use synchronous getCurrentUserSession based on lib/auth.ts code
     const session: UserSession | null = getCurrentUserSession();
@@ -92,11 +89,9 @@ export default async function ViewClaimPage({
         redirect('/dashboard');
     }
 
-    // *** REMOVED explicit type annotation for 'claim' variable ***
-    let claim = null; // Initialize as null
+    let claim: ClaimWithDetailsForView | null = null;
     try {
         console.log(`[ViewClaimPage] Fetching claim with ID: ${claimId}`);
-        // Let TypeScript infer the type from the Prisma query result
         claim = await prisma.claim.findUnique({
             where: { id: claimId },
             include: {
@@ -112,7 +107,6 @@ export default async function ViewClaimPage({
     }
 
     // --- Validation ---
-    // Type assertion might be needed here if inference isn't perfect, but let's try without first
     if (!claim) {
          console.warn(`[ViewClaimPage] Claim ${claimId} not found. Triggering notFound().`);
          notFound();
@@ -124,7 +118,6 @@ export default async function ViewClaimPage({
          notFound();
     }
 
-    // If validation passes, TypeScript should have inferred the type correctly by now
     console.log(`[ViewClaimPage] Access validated. Displaying details for ${claim.claimType} claim ${claim.id} in center ${claim.center?.name}`);
 
     // --- Render Page ---
@@ -138,13 +131,13 @@ export default async function ViewClaimPage({
             </Button>
 
             {/* --- Render the Client Component --- */}
-            {/* Pass the inferred 'claim' object. Ensure ClaimDetailsView accepts the inferred type or use type assertion */}
             <ClaimDetailsView
-                claim={claim as ClaimWithDetailsForView} // Use type assertion if needed for ClaimDetailsView prop
-                currentCoordinatorId={session.userId} // Fixed: Changed from session.role to session.userId
+                claim={claim}
+                currentCoordinatorId={session.role} // Pass role
             />
 
         </div>
     );
-}
+};
 
+export default ViewClaimPage; // Export the defined component
