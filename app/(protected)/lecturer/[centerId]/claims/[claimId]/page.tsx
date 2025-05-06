@@ -7,9 +7,9 @@ import { getCurrentUserSession } from '@/lib/auth'; // Helper to get user sessio
 import { Role, ClaimStatus, Claim, User, ClaimType, ThesisType, TransportType, SupervisedStudent } from '@prisma/client'; // Import necessary types/enums
 import { Button } from '@/components/ui/button'; // Shadcn UI components
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator"; // To separate sections
-import { Table, TableBody, TableCell, TableCaption, TableHead, TableHeader, TableRow } from "@/components/ui/table"; // For supervised students
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"; // For supervised students
 import { ArrowLeft, CheckCircle, XCircle, Clock, User as UserIcon, Calendar, DollarSign, FileText, BookOpen, Car, GraduationCap, Hash, MapPin, Clock4 } from 'lucide-react'; // Icons
 
 // Define props type including URL parameters
