@@ -74,7 +74,7 @@ export default async function ViewClaimPage(
 ) {
      // Await params if it's a Promise
     const resolvedParams = await params;
-    const { centerId, claimId } = resolvedParams;
+   
     
     const { centerId, claimId } = params;
     // Use synchronous getCurrentUserSession based on lib/auth.ts code
