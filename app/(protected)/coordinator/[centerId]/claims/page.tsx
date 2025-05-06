@@ -4,12 +4,14 @@ import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Metadata } from 'next';
 import prisma from '@/lib/prisma';
-import { getCurrentUserSession } from '@/lib/auth';
+// Assuming UserSession is the correct type returned by getCurrentUserSession
+import { getCurrentUserSession, UserSession } from '@/lib/auth';
 import { Role, ClaimStatus, Prisma, Claim, User, ThesisType, ClaimType } from '@prisma/client'; // Import necessary types
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Terminal, ListFilter, FileText, Search } from 'lucide-react'; // Added Search icon
 import { Card, CardContent } from "@/components/ui/card";
+import React from 'react'; // Import React
 
 // Import the client component for search input
 // ** Ensure this path is correct for your project structure **
@@ -18,16 +20,14 @@ import { ClaimSearchInput } from '@/components/claims/ClaimSearchInput';
 // ** Ensure this path is correct for your project structure **
 import { ClaimsTable } from '@/components/tables/ClaimsTable';
 
-// Define props type including URL parameters and searchParams
-type CoordinatorClaimsPageProps = {
+// *** Define the standard PageProps interface ***
+// Includes params and optional searchParams
+interface PageProps {
     params: {
-        centerId: string; // Center ID from the URL
+        centerId: string; // Only centerId for this page
     };
-    searchParams?: { // Optional search parameters from URL query
-        query?: string; // Search query
-        page?: string; // For pagination (optional)
-    };
-};
+    searchParams?: { [key: string]: string | string[] | undefined };
+}
 
 // Define the type for claim data passed to the ClaimsTable component.
 export type ClaimForCoordinatorView = Pick<Claim,
@@ -49,8 +49,12 @@ export type ClaimForCoordinatorView = Pick<Claim,
 
 
 // Function to generate dynamic metadata
-export async function generateMetadata({ params }: CoordinatorClaimsPageProps): Promise<Metadata> {
-    const session = getCurrentUserSession();
+// Use explicit inline type for params
+export async function generateMetadata(
+    { params }: { params: { centerId: string } } // Correctly type params for this specific function
+): Promise<Metadata> {
+    // Use synchronous getCurrentUserSession based on lib/auth.ts
+    const session: UserSession | null = getCurrentUserSession();
     // Fetch center name, ensure coordinator owns it for metadata generation
     const center = await prisma.center.findFirst({
         where: { id: params.centerId, coordinatorId: session?.userId },
@@ -63,9 +67,13 @@ export async function generateMetadata({ params }: CoordinatorClaimsPageProps): 
 }
 
 // The main Coordinator Claims List Page component (Server Component)
-export default async function CoordinatorClaimsPage({ params, searchParams }: CoordinatorClaimsPageProps) {
+// *** Use the standard PageProps interface ***
+export default async function CoordinatorClaimsPage(
+    { params, searchParams }: PageProps // Use the defined PageProps interface
+) {
     const { centerId } = params;
-    const session = getCurrentUserSession();
+    // Use synchronous getCurrentUserSession based on lib/auth.ts
+    const session: UserSession | null = getCurrentUserSession();
 
     // --- Authorization ---
     if (!session) redirect('/login');
@@ -85,7 +93,7 @@ export default async function CoordinatorClaimsPage({ params, searchParams }: Co
 
     // --- Search Logic ---
     const searchQuery = searchParams?.query || ''; // Get search query from URL
-    console.log(`[Server Page] Current Search Query: "${searchQuery}"`);
+    console.log(`[Server Page - Claims List] Current Search Query: "${searchQuery}"`);
 
     // --- Data Fetching ---
     // Construct the base where clause, always filtering by centerId
@@ -96,8 +104,8 @@ export default async function CoordinatorClaimsPage({ params, searchParams }: Co
     // Conditionally add the OR clause for search
     if (searchQuery) {
         const orConditions = [
-            // Case-insensitive search on relevant fields
-            { id: { contains: searchQuery } }, // Removed mode: 'insensitive'
+            // Case-insensitive search on relevant fields (removed mode: 'insensitive')
+            { id: { contains: searchQuery } },
             { submittedBy: { name: { contains: searchQuery } } },
             { submittedBy: { email: { contains: searchQuery } } },
             // Attempt enum search (convert query to potential enum value)
@@ -116,15 +124,12 @@ export default async function CoordinatorClaimsPage({ params, searchParams }: Co
         if (orConditions.length > 0) {
             whereClause.OR = orConditions;
         } else {
-             // If search query exists but results in no valid OR conditions (e.g., searching for non-existent enum),
-             // force no results by adding an impossible condition within the main 'where'.
-             // This ensures the centerId filter is still respected.
+             // Force no results if search query is invalid for OR conditions
              whereClause.id = { equals: 'impossible_id_to_prevent_error' };
         }
     }
 
-    // *** ADDED LOG: Log the final whereClause being used ***
-    console.log("[Server Page] Using whereClause:", JSON.stringify(whereClause, null, 2));
+    console.log("[Server Page - Claims List] Using whereClause:", JSON.stringify(whereClause, null, 2));
 
     let claims: ClaimForCoordinatorView[] = [];
     try {
